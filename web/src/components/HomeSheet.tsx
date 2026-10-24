@@ -9,8 +9,9 @@ import { APP_MODES } from '../mode';
 import { hrefFor } from '../router';
 import { formatCoords, type RoutePlannerApi } from '../routePlanner';
 import { useUser } from '../user';
+import type { GeoErrorKind, GeoFix } from '../sensors';
+import { Icon, PROFILE_ICONS } from '../icons';
 import PlaceField from './PlaceField';
-import { PROFILE_GLYPHS } from './UserDialog';
 
 export type GoError = 'noDestination' | 'geoDenied' | 'geoUnavailable' | null;
 
@@ -21,6 +22,10 @@ interface HomeSheetProps {
   onMode: (mode: AppMode) => void;
   onGo: () => void;
   onDemo: () => void;
+  onReport: () => void;
+  /** Live GPS fix (null until the first one) and its error, for the From row. */
+  fix: GeoFix | null;
+  geoError: GeoErrorKind | null;
   goBusy: boolean;
   goError: GoError;
   headingRef: RefObject<HTMLHeadingElement>;
@@ -51,7 +56,7 @@ const MODE_ICONS: Record<AppMode, JSX.Element> = {
   ),
 };
 
-export default function HomeSheet({ planner, lang, mode, onMode, onGo, onDemo, goBusy, goError, headingRef, compact = false }: HomeSheetProps) {
+export default function HomeSheet({ planner, lang, mode, onMode, onGo, onDemo, onReport, fix, geoError, goBusy, goError, headingRef, compact = false }: HomeSheetProps) {
   const { t } = useTranslation();
   const id = useId();
   const user = useUser();
@@ -104,7 +109,20 @@ export default function HomeSheet({ planner, lang, mode, onMode, onGo, onDemo, g
 
       <div className="from-row">
         <span className="from-row__label">{t('home.from')}:</span>
-        <span className="from-row__value">{state.origin ? state.origin.label : t('home.fromGps')}</span>
+        <span className="from-row__value">
+          {state.origin ? (
+            state.origin.label
+          ) : fix ? (
+            <>
+              <span className="livedot" aria-hidden="true" />
+              {t('home.fromGpsLive', { m: Math.round(fix.accuracy) })}
+            </>
+          ) : geoError ? (
+            t('home.fromGpsOff')
+          ) : (
+            t('home.fromGps')
+          )}
+        </span>
         <button type="button" className="btn btn--small btn--ghost" aria-expanded={originOpen} aria-controls={`${id}-origin`} onClick={() => setOriginOpen((v) => !v)}>
           {t('home.changeOrigin')}
         </button>
@@ -138,7 +156,7 @@ export default function HomeSheet({ planner, lang, mode, onMode, onGo, onDemo, g
 
       <p className="profilechip">
         <span aria-hidden="true" className="profilechip__glyph">
-          {PROFILE_GLYPHS[state.profile] ?? '♿'}
+          <Icon name={PROFILE_ICONS[state.profile] ?? 'wheelchair'} size={20} />
         </span>
         <span className="profilechip__text">
           <span className="sr-only">{t('route.profile.label')}: </span>
@@ -187,6 +205,9 @@ export default function HomeSheet({ planner, lang, mode, onMode, onGo, onDemo, g
         </button>
       </div>
       {!state.destination && <p className="place__hint">{t('home.goHint')}</p>}
+      <button type="button" className="btn btn--ghost sheet-home__report" onClick={onReport}>
+        <Icon name="flag" size={20} /> {t('report.fab')}
+      </button>
       <p className="place__status" role="status" aria-live="polite">
         {state.loading ? t('route.loading') : announcement}
       </p>

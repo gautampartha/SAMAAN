@@ -15,6 +15,7 @@ import {
 } from '../api';
 import type { Lang } from '../i18n';
 import { refreshUser, useUser } from '../user';
+import { addPoints } from '../rewards';
 import UserDialog, { UserChip } from './UserDialog';
 import { CLASS_GLYPHS } from './ReportSheet';
 
@@ -168,6 +169,7 @@ export default function ValidatePage({ zone, lang, onResolved }: ValidatePagePro
         const res = await reportApi.vote(current.id, user.id, value);
         setVoteResult(res);
         setVoteState('voted');
+        addPoints('vote');
         if (res.resolved) onResolved();
         void refreshUser();
       } catch (err) {

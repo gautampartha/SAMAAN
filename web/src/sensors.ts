@@ -89,6 +89,10 @@ export interface Sensors {
   /** True when this browser needs an explicit tap to grant motion sensors (iOS). */
   needsTap: boolean;
   enable: () => Promise<void>;
+  /** Start GPS only (no motion-permission prompt): used on launch so the map shows the live position. */
+  enableLocation: () => void;
+  /** True once a GPS watch is running (from enable or enableLocation). */
+  locating: boolean;
   fixRef: MutableRefObject<GeoFix | null>;
   orientationRef: MutableRefObject<Orientation | null>;
 }
@@ -99,6 +103,7 @@ export function useSensors(): Sensors {
   const [geoError, setGeoError] = useState<GeoErrorKind | null>(null);
   const [permission, setPermission] = useState<SensorPermission>('idle');
   const [enabled, setEnabled] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   const fixRef = useRef<GeoFix | null>(null);
   const orientationRef = useRef<Orientation | null>(null);
@@ -129,6 +134,7 @@ export function useSensors(): Sensors {
       return;
     }
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+    setLocating(true);
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const f: GeoFix = {
@@ -166,6 +172,11 @@ export function useSensors(): Sensors {
     setEnabled(true);
   }, [startGeolocation, startOrientation]);
 
+  const enableLocation = useCallback(() => {
+    if (watchIdRef.current !== null) return;
+    startGeolocation();
+  }, [startGeolocation]);
+
   useEffect(() => {
     return () => {
       cleanupOrientationRef.current?.();
@@ -185,6 +196,8 @@ export function useSensors(): Sensors {
     enabled,
     needsTap: orientationPermissionFn() !== null,
     enable,
+    enableLocation,
+    locating,
     fixRef,
     orientationRef,
   };

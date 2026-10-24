@@ -264,21 +264,57 @@ export function createRecognizer(lang: Lang, handlers: RecognizerHandlers): Reco
   };
 }
 
-/** Yes / no / repeat / where / stop in English and Hindi, matched on the recognised text. */
-export type VoiceCommand = 'yes' | 'no' | 'repeat' | 'where' | 'stop' | 'demo';
+/** Spoken commands in English and Hindi (Devanagari and romanised), matched on the recognised text. */
+export type VoiceCommand = 'yes' | 'no' | 'repeat' | 'where' | 'stop' | 'demo' | 'report' | 'help' | 'cantSee' | 'home';
 
-const COMMANDS: Record<VoiceCommand, RegExp> = {
-  yes: /\b(yes|yeah|yep|ok|okay|go|start|haan|हाँ|हां|जी|ठीक|चलो|शुरू)\b/i,
-  no: /\b(no|nope|cancel|nahi|nahin|नहीं|रद्द)\b/i,
-  repeat: /\b(repeat|again|dobara|dohrao|फिर|दोबारा|दोहराओ|दोहराएँ|दोहराएं)\b/i,
-  where: /\b(where|kahan|कहाँ|कहां|location|स्थान)\b/i,
-  stop: /\b(stop|end|quit|band|ruko|रुको|बंद|समाप्त|खत्म)\b/i,
-  demo: /\b(demo|riya|रिया|डेमो)\b/i,
-};
+// Order matters: the more specific commands (report, help, where) come before yes / no / stop so that
+// "no footpath here, report it" is a report and "where am I" is not swallowed by "no".
+// Latin words get \b boundaries; Devanagari has no \b word characters in JS, so those are matched bare.
+function cmd(latin: string[], hindi: string[] = []): RegExp {
+  const parts: string[] = [];
+  if (latin.length) parts.push(`\\b(?:${latin.join('|')})\\b`);
+  if (hindi.length) parts.push(`(?:${hindi.join('|')})`);
+  return new RegExp(parts.join('|'), 'i');
+}
+
+const COMMANDS: [VoiceCommand, RegExp][] = [
+  ['cantSee', cmd(["can'?t see", 'cannot see', 'not able to see', "i am blind", "i'm blind", 'blind', 'low vision', 'dikhta nahi', 'dikh nahi'], ['दिख(?:ाई)? नहीं', 'अंधा', 'अंधी', 'नेत्रहीन'])],
+  ['report', cmd(['report', 'complain', 'complaint', 'barrier here', 'blocked', 'shikayat', 'badha', 'rukawat'], ['रिपोर्ट', 'शिकायत', 'बाधा', 'रुकावट'])],
+  ['help', cmd(['help', 'what can i say', 'commands', 'options', 'madad', 'sahayata'], ['मदद', 'सहायता'])],
+  ['where', cmd(['where', 'kahan', 'kaha', 'location'], ['कहाँ', 'कहां', 'स्थान'])],
+  ['repeat', cmd(['repeat', 'again', 'dobara', 'dohrao'], ['फिर', 'दोबारा', 'दोहराओ', 'दोहराएँ', 'दोहराएं'])],
+  ['home', cmd(['home screen', 'main menu', 'go home', 'menu'], ['मेन्यू', 'मुख्य', 'होम'])],
+  ['demo', cmd(['demo', 'riya'], ['रिया', 'डेमो'])],
+  ['stop', cmd(['stop', 'end', 'quit', 'exit', 'band', 'ruko'], ['रुको', 'बंद', 'समाप्त', 'खत्म'])],
+  ['no', cmd(['no', 'nope', 'cancel', 'nahi', 'nahin'], ['नहीं', 'रद्द', 'नहि'])],
+  ['yes', cmd(['yes', 'yeah', 'yep', 'ok', 'okay', 'go', 'start', 'sure', 'haan', 'han', 'ji'], ['हाँ', 'हां', 'जी', 'ठीक', 'चलो', 'शुरू'])],
+];
 
 export function parseCommand(text: string): VoiceCommand | null {
-  for (const key of Object.keys(COMMANDS) as VoiceCommand[]) {
-    if (COMMANDS[key].test(text)) return key;
+  for (const [key, re] of COMMANDS) {
+    if (re.test(text)) return key;
+  }
+  return null;
+}
+
+/** Barrier class named in speech (voice report). Keys match config/taxonomy.yaml ids. */
+const CLASS_WORDS: [string, RegExp][] = [
+  ['steps_or_high_kerb', /(step|stair|kerb|curb|सीढ़|सीढि|seedhi|सीढ़ी|ऊँचा|uncha)/i],
+  ['parked_vehicle', /(vehicle|car|bike|scooter|scooty|motorcycle|parked|गाड़ी|गाड़ि|स्कूटर|बाइक|पार्क|gaadi|gadi)/i],
+  ['open_drain', /(drain|naala|nala|नाला|नाली|gutter|manhole)/i],
+  ['curb_ramp', /(ramp|रैंप|रेम्प)/i],
+  ['broken_surface', /(broken|pothole|crack|uneven|टूट|गड्ढ|gaddha|toota|tuta)/i],
+  ['fixed_obstacle', /(pole|post|tree|pillar|obstacle|खंभ|खम्भ|पेड़|khamba|ped\b)/i],
+  ['vendor_encroachment', /(vendor|stall|shop|thela|ठेला|दुकान|dukaan|rehdi|रेहड़ी)/i],
+  ['bike_barrier', /(bollard|barrier|gate|बोलार्ड|गेट)/i],
+  ['construction', /(construction|digging|work|निर्माण|खुदाई|nirman|khudai)/i],
+  ['waterlogging', /(water|flood|पानी|जलभराव|paani|pani)/i],
+  ['no_footpath', /(no footpath|no pavement|footpath nahi|फुटपाथ नहीं)/i],
+];
+
+export function parseBarrierClass(text: string): string | null {
+  for (const [id, re] of CLASS_WORDS) {
+    if (re.test(text)) return id;
   }
   return null;
 }

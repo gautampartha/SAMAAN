@@ -5,6 +5,7 @@
 import { useSyncExternalStore } from 'react';
 import { ApiError, recomputeCoverage, uploadImage, type CaptureUpload } from './api';
 import { getAll, idbAvailable, put, remove, STORE_PENDING } from './idb';
+import { addPoints } from './rewards';
 
 export interface PendingRecord extends CaptureUpload {
   /** IndexedDB key: captured_at + random suffix. */
@@ -176,6 +177,7 @@ class UploadQueue {
             }
           }
           this.update({ uploaded: this.state.uploaded + 1, lastError: null });
+          addPoints('photo');
           this.scheduleRecompute();
         } catch (err) {
           const n = (this.attempts.get(rec.key) ?? 0) + 1;

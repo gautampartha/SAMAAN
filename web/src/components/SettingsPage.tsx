@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { RISKS, type Profile, type Risk } from '../api';
 import { LANGS, type Lang } from '../i18n';
 import type { RoutePlannerApi } from '../routePlanner';
-import UserDialog, { PROFILE_GLYPHS, UserChip } from './UserDialog';
+import UserDialog, { UserChip } from './UserDialog';
+import { Icon, PROFILE_ICONS } from '../icons';
+import { hrefFor } from '../router';
 
 interface SettingsPageProps {
   planner: RoutePlannerApi;
@@ -62,7 +64,7 @@ export default function SettingsPage({ planner, lang, onLangChange, highContrast
               <label key={p.id} className="choice choice--stacked">
                 <input type="radio" name={`${id}-profile`} value={p.id} checked={state.profile === p.id} onChange={() => onProfile(p.id)} />
                 <span className="choice__glyph" aria-hidden="true">
-                  {PROFILE_GLYPHS[p.id] ?? '♿'}
+                  <Icon name={PROFILE_ICONS[p.id] ?? 'wheelchair'} size={22} />
                 </span>
                 <span className="choice__text">
                   <span className="choice__name" lang={lang}>
@@ -104,9 +106,14 @@ export default function SettingsPage({ planner, lang, onLangChange, highContrast
         </h3>
         <p className="panel__hint">{t('user.intro')}</p>
         <UserChip onChange={() => setUserDialog(true)} />
-        <button type="button" className="btn" onClick={() => setUserDialog(true)}>
-          {t('settings.setUser')}
-        </button>
+        <div className="planner__actions">
+          <a className="btn btn--primary" href={hrefFor('welcome')}>
+            {t('settings.rerunWelcome')}
+          </a>
+          <button type="button" className="btn" onClick={() => setUserDialog(true)}>
+            {t('settings.setUser')}
+          </button>
+        </div>
       </section>
 
       {userDialog && <UserDialog lang={lang} onDone={() => setUserDialog(false)} onCancel={() => setUserDialog(false)} />}

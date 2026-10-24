@@ -132,7 +132,8 @@
     "suspected": "Suspected"
   },
   "badge": {
-    "synthetic": "Synthetic demo data"
+    "synthetic": "Synthetic demo data",
+    "syntheticShort": "demo seed"
   },
   "list": {
     "title": "Barrier list",
@@ -194,7 +195,8 @@
       "warning": "Warning: {{name}} ahead.",
       "warningImpassable": "Warning: {{name}} ahead, impassable for you.",
       "arrive": "You have arrived at your destination."
-    }
+    },
+    "demo": "Demo"
   },
   "wheels": {
     "verifiedTitle": "Verified by wheels",
@@ -328,7 +330,8 @@
     "label": "Map of accessible walking routes",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
-    "toolsLabel": "Map tools"
+    "toolsLabel": "Map tools",
+    "locate": "Centre on my location"
   },
   "units": {
     "m": "m",
@@ -512,7 +515,8 @@
     },
     "pendingMarker": "Pending report (not yet validated)",
     "prefillTitle": "Suspected barrier from a wheelchair ride",
-    "prefilled": "the report will be placed at {{lat}}, {{lon}}; stand within 50 m of it"
+    "prefilled": "the report will be placed at {{lat}}, {{lon}}; stand within 50 m of it",
+    "short": "Report"
   },
   "validate": {
     "title": "Validate reports",
@@ -741,7 +745,14 @@
     "capture": "Photo walk with auto-capture",
     "stats": "How much of the map is checked",
     "settings": "Language, contrast, profile, who you are",
-    "about": "SAMAAN routes people around footpath barriers and keeps its map fresh with the photos travellers contribute."
+    "about": "SAMAAN routes people around footpath barriers and keeps its map fresh with the photos travellers contribute.",
+    "demo": "Demo trips, data counters, reset",
+    "groups": {
+      "demo": "Demo and data",
+      "community": "Community",
+      "planning": "Planning",
+      "app": "App"
+    }
   },
   "home": {
     "greeting": "Namaste",
@@ -764,7 +775,9 @@
       "noDestination": "Choose a destination first.",
       "geoDenied": "Location permission was denied. Set an origin with Change, or try the demo trip.",
       "geoUnavailable": "Your location is unavailable. Set an origin with Change, or try the demo trip."
-    }
+    },
+    "fromGpsLive": "My location · ±{{m}} m",
+    "fromGpsOff": "Location is off. Set a start with Change."
   },
   "mode": {
     "move": {
@@ -865,9 +878,11 @@
     "cmd": {
       "repeat": "Repeat",
       "where": "Where am I?",
-      "stop": "Stop"
+      "stop": "Stop",
+      "report": "Report a barrier",
+      "help": "Help"
     },
-    "help": "Say a place name. Then say yes to go. While walking: repeat, where am I, stop. Double-tap the screen to hear the step again.",
+    "help": "Say a place name, then yes. While walking: repeat, where am I, report, stop. Tap anywhere to talk; double-tap to hear the step again.",
     "say": {
       "where": "You are on {{street}}. In {{distance}}, {{instruction}}",
       "unknownStreet": "an unnamed path",
@@ -881,8 +896,27 @@
       "cancelled": "Cancelled. Tap and say where you want to go.",
       "found": "Found {{name}}. Say yes to go.",
       "notFound": "No place found for {{query}}. Try another name.",
-      "searchFailed": "Search is not available right now."
-    }
+      "searchFailed": "Search is not available right now.",
+      "greeting": "You are in Listen mode. Say where you want to go, or say help.",
+      "helpIdle": "You can say a place name, like library or hostel. Say demo for the demo trip. Say report to report a barrier where you stand. Say home to leave Listen.",
+      "helpNav": "While walking you can say: repeat, where am I, report, or stop.",
+      "reportAsk": "What is blocking the way? Say steps, parked vehicle, drain, broken surface, construction, water, or something else.",
+      "reportConfirm": "Reporting {{name}} at your location. Say yes to send, or no to cancel.",
+      "reportNoGps": "I need your location to place the report. Please allow location access and try again.",
+      "reportSending": "Sending your report.",
+      "reportNote": "Reported by voice in Listen mode (no photo).",
+      "reportSent": "Report sent. Thank you. Other travellers will confirm it and the routes will update.",
+      "reportFailed": "The report could not be sent. Try again later.",
+      "tapWhenReady": "I will stop listening for now. Tap anywhere when you want to talk."
+    },
+    "handsFreeOn": "Hands-free: on",
+    "handsFreeOff": "Hands-free: off",
+    "tapClass": "Say what is blocking the way",
+    "transcript": "Conversation",
+    "you": "You",
+    "sendReport": "Yes, send report: {{name}}",
+    "typeInstead": "Type instead",
+    "noCancel": "No, cancel"
   },
   "contribute": {
     "title": "Contribute",
@@ -895,7 +929,8 @@
     "rideHint": "Mount the phone on a wheelchair; smooth stretches verify footpaths",
     "missionsHint": "Where a photo walk helps most",
     "reportHint": "Photograph a barrier where you stand",
-    "noCamera": "No camera available for contribution."
+    "noCamera": "No camera available for contribution.",
+    "ways": "Ways to contribute"
   },
   "stats": {
     "title": "Statistics",
@@ -923,6 +958,149 @@
     "title": "Settings",
     "display": "Display",
     "profilesFallback": "Profile list is the built-in default; the API did not answer /profiles.",
-    "setUser": "Set who you are"
+    "setUser": "Set who you are",
+    "rerunWelcome": "Change how I move"
+  },
+  "welcome": {
+    "tagline": "Walk for All",
+    "title": "How do you move?",
+    "sub": "SAMAAN shapes its routes and its screen around you. You can change this any time in Settings.",
+    "lang": "Language",
+    "profiles": {
+      "wheelchair_manual": {
+        "title": "Wheelchair",
+        "line": "No steps, no high kerbs, ramps at crossings"
+      },
+      "elderly_walking_aid": {
+        "title": "Walking aid",
+        "line": "Slower pace, smooth surfaces, short detours"
+      },
+      "pram": {
+        "title": "Pram or stroller",
+        "line": "No steps; narrow gaps and drains matter"
+      },
+      "cognitive": {
+        "title": "Autistic or dyslexic",
+        "line": "Calm camera view, one big arrow at a time"
+      },
+      "blind_low_vision": {
+        "title": "Blind or low vision",
+        "line": "Everything spoken, voice control"
+      },
+      "walker": {
+        "title": "Walking",
+        "line": "Standard footpath routes"
+      }
+    },
+    "opens": "Opens {{mode}}",
+    "name": "Your name (optional)",
+    "namePlaceholder": "e.g. Riya",
+    "continue": "Continue",
+    "saving": "Setting up…",
+    "pickOne": "Choose how you move first.",
+    "cantSee": "I can't see the screen",
+    "cantSeeHint": "Or double-tap anywhere on the screen. SAMAAN will talk you through.",
+    "error": "Could not reach the SAMAAN server. Check the connection and try again.",
+    "defaultName": "Traveller",
+    "say": {
+      "greeting": "Welcome to SAMAAN. If you cannot see the screen, double tap anywhere, or say: I can't see.",
+      "blindChosen": "Listen mode is on. Everything will be spoken from now on."
+    }
+  },
+  "demoPage": {
+    "title": "Demo",
+    "intro": "Everything here runs on the live server. Counters say what is real and what is seeded; nothing is made up.",
+    "trips": "Demo trips",
+    "tripsHint": "Riya's trip across the campus, in each of the three modes.",
+    "tripFor": {
+      "move": "Map, two routes, turn banner",
+      "explore": "Camera and one big arrow",
+      "listen": "Fully spoken"
+    },
+    "data": "Data on the server",
+    "refresh": "Refresh",
+    "tiles": {
+      "realPhotos": "real photos",
+      "ofWhich": "{{mapillary}} Mapillary · {{own}} ours",
+      "coverageReal": "footpaths checked (real)",
+      "edges": "{{known}} of {{total}} stretches",
+      "realBarriers": "real barriers",
+      "synthetic": "+ {{count}} seeded (synthetic)",
+      "reports": "citizen reports",
+      "reportsSplit": "{{pending}} pending · {{verified}} verified",
+      "rides": "wheelchair rides",
+      "users": "people"
+    },
+    "syntheticNote": "Seeded demo barriers are on the map, flagged synthetic. Real photos override them where they overlap.",
+    "loading": "Loading counters…",
+    "noStatus": "Counters unavailable (the server does not answer /demo/status).",
+    "actions": "Actions",
+    "replayRide": "Replay demo wheelchair ride",
+    "reset": "Reset demo data",
+    "resetConfirm": "Tap again to confirm reset",
+    "resetHint": "Reset removes citizen reports, votes, rides and our own photos, and restores the seeded barriers. Mapillary photos stay.",
+    "needUser": "Set up who you are (Settings) to replay the ride.",
+    "resetDone": "Demo data reset ({{count}} records removed).",
+    "rideDone": "Ride replayed: {{edges}} footpath stretches verified by wheels.",
+    "errors": {
+      "status": "Could not load the counters.",
+      "reset": "Reset failed on the server.",
+      "ride": "Ride replay failed."
+    },
+    "collect": "Collect real campus photos",
+    "collectSteps": {
+      "1": "Open Capture on each phone (Contribute → Capture). Allow camera, location and motion.",
+      "2": "Walk the footpaths around the venue at a normal pace with the phone upright, camera facing forward. Auto-capture takes a photo every 10 m.",
+      "3": "Point the camera at anything that blocks a wheelchair: steps, parked bikes, drains, construction. Hold still for one frame.",
+      "4": "Photos upload in the background; the map turns green where you walked and barriers appear within a minute."
+    },
+    "openCapture": "Open Capture"
+  },
+  "rewards": {
+    "balance": "Your contribution points",
+    "points": "points",
+    "progressLabel": "Progress to the next coupon",
+    "nextCoupon": "{{points}} more points to unlock {{name}}",
+    "allUnlocked": "Every coupon in the pilot catalogue is unlocked.",
+    "kinds": {
+      "photo": "Photo uploaded",
+      "report": "Barrier reported",
+      "vote": "Report validated",
+      "ride": "Wheelchair ride",
+      "trip": "Trip completed"
+    },
+    "partnersTitle": "Partner coupons (CSR pilot)",
+    "partnersIntro": "SAMAAN is building a CSR programme with local businesses and mobility companies: every contribution that keeps footpaths mapped earns points, and partners fund the coupons.",
+    "partners": {
+      "campus_cafe": {
+        "name": "Campus Café",
+        "offer": "₹50 off any order",
+        "sector": "Food and beverage"
+      },
+      "metro_ride": {
+        "name": "Metro Smart Card",
+        "offer": "₹30 top-up",
+        "sector": "Public transport"
+      },
+      "pharmacy": {
+        "name": "City Pharmacy",
+        "offer": "10% off mobility aids",
+        "sector": "Health"
+      },
+      "bookstore": {
+        "name": "Jaipur Bookstore",
+        "offer": "₹100 voucher",
+        "sector": "Retail"
+      },
+      "mobility_service": {
+        "name": "Wheelchair taxi",
+        "offer": "One free accessible ride",
+        "sector": "Mobility"
+      }
+    },
+    "redeemed": "Redeemed",
+    "redeemFor": "Redeem · {{points}}",
+    "redeemedMsg": "{{name}} coupon added to your wallet (pilot: shown to the partner at the counter).",
+    "fineprint": "Pilot catalogue: partner names are placeholders until CSR agreements are signed. Points are kept on this phone."
   }
 }

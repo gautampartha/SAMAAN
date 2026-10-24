@@ -1,9 +1,10 @@
 // Tiny hash router, no dependency. `#/` (and `#/home`) -> Home; the other pages are listed below.
-// Tabs: Home, Navigate (also Explore / Listen), Contribute, More (Map, Validate, Missions, Reach Gap,
-// Ride, Capture, Statistics, Settings).
+// Tabs: Home, Navigate (also Explore / Listen), Contribute, More (Demo, Map, Validate, Missions, Reach Gap,
+// Ride, Capture, Statistics, Settings). `welcome` is the first-run onboarding (no tabs).
 import { useEffect, useState } from 'react';
 
 export type Route =
+  | 'welcome'
   | 'home'
   | 'navigate'
   | 'explore'
@@ -17,9 +18,11 @@ export type Route =
   | 'reach'
   | 'ride'
   | 'stats'
-  | 'settings';
+  | 'settings'
+  | 'demo';
 
 export const ROUTES: readonly Route[] = [
+  'welcome',
   'home',
   'navigate',
   'explore',
@@ -34,13 +37,22 @@ export const ROUTES: readonly Route[] = [
   'ride',
   'stats',
   'settings',
+  'demo',
 ] as const;
 
 export type Tab = 'home' | 'navigate' | 'contribute' | 'more';
 export const TABS: readonly Tab[] = ['home', 'navigate', 'contribute', 'more'] as const;
 
 /** Pages reachable from the More tab, in display order. */
-export const MORE_ROUTES: readonly Route[] = ['map', 'validate', 'missions', 'reach', 'ride', 'capture', 'stats', 'settings'] as const;
+export const MORE_ROUTES: readonly Route[] = ['demo', 'map', 'validate', 'missions', 'reach', 'ride', 'capture', 'stats', 'settings'] as const;
+
+/** More page sections (display order). */
+export const MORE_GROUPS: readonly { id: string; routes: readonly Route[] }[] = [
+  { id: 'demo', routes: ['demo', 'map', 'stats'] },
+  { id: 'community', routes: ['validate', 'missions', 'capture', 'ride'] },
+  { id: 'planning', routes: ['reach'] },
+  { id: 'app', routes: ['settings'] },
+] as const;
 
 /** Routes that keep the map mounted behind their sheet / overlay. */
 export const MAP_ROUTES: readonly Route[] = ['home', 'navigate', 'explore', 'listen', 'map', 'reach'] as const;

@@ -24,7 +24,11 @@ export function StatusStrip({ zone, lang, synthetic, status }: StatusStripProps)
         </span>
         <span className="sr-only">{t('header.zoneLabel')}: </span>
         <span className="strip__zoneName">{zone ? localized(zone.display_name, lang) : t('header.zoneUnknown')}</span>
-        {synthetic && <span className="badge badge--synthetic badge--tiny">{t('badge.synthetic')}</span>}
+        {synthetic && (
+          <span className="badge badge--synthetic badge--tiny" title={t('badge.synthetic')}>
+            {t('badge.syntheticShort')}
+          </span>
+        )}
       </p>
       {status}
     </header>

@@ -3,13 +3,40 @@
 // while I navigate" consent and the confidence of the last route. Each is a tiny
 // external store backed by localStorage so every page reads the same value.
 import { useSyncExternalStore } from 'react';
-import type { AppMode, ConfidenceLabel, RouteMode } from './api';
+import type { AppMode, ConfidenceLabel, Profile, RouteMode } from './api';
 
 export const MODE_KEY = 'samaan.mode';
 export const CONTRIBUTE_KEY = 'samaan.contribute';
 export const LAST_CONFIDENCE_KEY = 'samaan.lastConfidence';
 
 export const APP_MODES: readonly AppMode[] = ['move', 'explore', 'listen'] as const;
+export const ONBOARDED_KEY = 'samaan.onboarded';
+
+/** Which guidance mode a travel profile opens by default (mirrors config/profiles.yaml profile_modes). */
+export const PROFILE_MODE: Record<Profile, AppMode> = {
+  walker: 'move',
+  wheelchair_manual: 'move',
+  elderly_walking_aid: 'move',
+  pram: 'move',
+  cognitive: 'explore',
+  blind_low_vision: 'listen',
+};
+
+export function isOnboarded(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+export function setOnboarded(v: boolean): void {
+  try {
+    if (v) localStorage.setItem(ONBOARDED_KEY, '1');
+    else localStorage.removeItem(ONBOARDED_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 function makeStore<T>(key: string, parse: (raw: string | null) => T, serialise: (v: T) => string | null) {
   let current: T = parse(readRaw(key));

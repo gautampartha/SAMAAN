@@ -999,5 +999,69 @@ Decisions:
 - Hindi to review: mode names are transliterations (मूव / एक्सप्लोर / लिसन), "भरोसा"
   (confidence), "नकली चाल" (simulated walk), "हल्का/तीखा बाएँ-दाएँ", profile names.
 
+## Second mentor round — six gaps (2026-10-25)
+
+The user's list after testing the iOS build: (1) live location on the map, (2) a blind traveller must
+be able to run the whole app by voice, (3) dated UI and bugs, (4) a first-run "who are you" screen
+that opens the right experience per disability, (5) a proper demo mode with real campus data,
+(6) no Report button anywhere + CSR partners / coupons in Contribute.
+
+### What was built (web)
+- **Live location (1).** GPS starts on launch (`useSensors().enableLocation`, no motion prompt), the
+  blue dot and accuracy halo show on every map screen, Home's From row reads "My location · ±N m"
+  with a pulsing dot, a locate button recentres, the map auto-centres once when the first fix is
+  inside the zone. Navigation still uses the same watch.
+- **Voice-only (2).** Listen is now a hands-free conversation: after every prompt SAMAAN listens
+  again by itself (stops after two silent rounds, "tap anywhere when you want to talk"); single tap
+  anywhere = talk, double tap = repeat. New spoken commands: help, report (→ "what is blocking the
+  way?" → class parsed from speech → yes → `POST /reports` without a photo at the GPS fix), home,
+  "I can't see". Hindi commands now match (the old `\b` regexes never matched Devanagari). The
+  welcome screen speaks a greeting and, in the native app, listens for "I can't see"; a double tap
+  anywhere picks the blind path. No Vapi / cloud receptionist: no key was available; on-device
+  Apple Speech + speechSynthesis is used (human task 29 if a cloud agent is wanted).
+- **UI pass (3).** Onboarding hero, dark immersive Listen (orb with pulse rings, transcript
+  bubbles), grouped More with icon rows, Contribute hero card, SVG icon set (`icons.tsx`) instead
+  of emoji, quieter "demo seed" badge, Demo page tiles.
+- **First-run screen (4).** `#/welcome` (shown until `samaan.onboarded` + a user exist): language,
+  "How do you move?" (wheelchair / walking aid / pram → Move; autistic or dyslexic → Explore; blind
+  or low vision → Listen; walking → Move), optional name, Continue → `POST /users` (falls back to a
+  local identity offline). Blind path: greeting spoken, double tap / "I can't see" / big black
+  button → Listen with a spoken greeting and the mic open. A returning Listen user lands in Listen.
+  Settings → "Change how I move" reopens it.
+- **Demo mode (5).** More → Demo: one-tap demo trip per mode, honest counters from
+  `GET /demo/status` (real vs synthetic photos, real coverage %, real vs seeded barriers, reports,
+  rides, users), Replay demo ride, Reset demo data (two-tap confirm → `POST /demo/reset`), and the
+  photo-collection brief. `docs/demo_script.md` rewritten for MUJ with the teammate brief.
+- **Report everywhere + CSR (6).** Report pill on Home/Navigate map, Report row in the Home sheet,
+  Report in every mode (Move/Explore buttons, Listen voice + button), Contribute hero button.
+  Contribute shows a points ledger (`rewards.ts`, local: photo +2, report +25, vote +5, ride +40,
+  trip +10) with progress to the next coupon and a CSR partner catalogue (Campus Café, Metro Smart
+  Card, City Pharmacy, Jaipur Bookstore, Wheelchair taxi) with Redeem. Labelled as a pilot
+  catalogue with placeholder names; points live on the phone.
+- 889 en/hi keys with parity (was 734).
+
+### What was built (backend)
+- `api/routers/demo.py`: `GET /demo/status`, `POST /demo/reset` (see the session report in the
+  commit message / tests `tests/test_demo_api.py`), `make demo-reset`.
+
+### Decisions taken alone
+- Points and partner names are product placeholders, kept out of the server and flagged in the UI
+  ("pilot catalogue"); no partner is claimed as signed.
+- Voice reports have no photo and severity 3; they go through the normal validation loop.
+- Onboarding creates a server user without the team flag; team members tick it in Settings.
+- The welcome mic listens only inside the native app (browsers block speech without a gesture).
+
+### Human tasks
+28. **Walk the campus with Capture** (45 min, 2–3 phones): the brief is in `docs/demo_script.md`
+    ("Collecting real campus photos"). Then `make infer-zero-shot && make geolocate` and
+    `POST /route/reload`.
+29. **Cloud voice agent (optional)**: if you want Vapi/Retell instead of on-device speech, get a key;
+    the swap point is `web/src/speech.ts` (`speak`, `createRecognizer`) and `ListenScreen.handleText`.
+30. **Review Hindi** for `welcome.*`, `listen.say.*`, `rewards.*`, `demoPage.*` (10 min).
+31. **Rebuild the iPhone app** after any tunnel restart: `make ios-sync API_URL=<url>` then the
+    xcodebuild/devicectl steps in `docs/IOS_APP.md`.
+32. **CSR partners**: replace the placeholder catalogue in `web/src/rewards.ts` + `rewards.partners.*`
+    strings once a real partner agrees; decide whether points move to the server (`User` table).
+
 ## Phase P10 — Eval, demo, polish
 _Rescoped after the pivot; starts after the pivot work._

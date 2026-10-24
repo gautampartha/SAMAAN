@@ -31,6 +31,9 @@ import RouteChoice from './components/RouteChoice';
 import NavigationScreen from './components/NavigationScreen';
 import ExploreScreen from './components/ExploreScreen';
 import ListenScreen from './components/ListenScreen';
+import WelcomeScreen, { type OnboardingChoice } from './components/WelcomeScreen';
+import DemoPage from './components/DemoPage';
+import { Icon } from './icons';
 import ContributePage from './components/ContributePage';
 import StatsPage from './components/StatsPage';
 import SettingsPage from './components/SettingsPage';
@@ -45,8 +48,10 @@ import { MAP_ROUTES, navigate, useHashRoute, type Route } from './router';
 import { formatCoords, useRoutePlanner, type PlannerPoint, type PointRole } from './routePlanner';
 import { useReachGap } from './reach';
 import { useSensors } from './sensors';
-import { useNavigation } from './navigation';
-import { setContribute, setMode, useContribute, useMode } from './mode';
+import { useNavigation, type NavPosition } from './navigation';
+import { getMode, isOnboarded, PROFILE_MODE, setContribute, setMode, setOnboarded, useContribute, useMode } from './mode';
+import { createUser, getUser, setUser, useUser } from './user';
+import { addPoints } from './rewards';
 import { stopSpeaking } from './speech';
 
 type Theme = 'auto' | 'normal' | 'high-contrast';
@@ -150,6 +155,12 @@ export default function App() {
   const [goBusy, setGoBusy] = useState(false);
   const [goError, setGoError] = useState<GoError>(null);
 
+  // ---- First run: who are you / how do you move (sets profile + mode); blind path greets in Listen ----
+  const user = useUser();
+  const [onboarded, setOnboardedState] = useState<boolean>(() => isOnboarded() && getUser() !== null);
+  const [listenGreet, setListenGreet] = useState(false);
+  const showWelcome = !onboarded || route === 'welcome';
+
   const legendBtnRef = useRef<HTMLButtonElement>(null);
   const listBtnRef = useRef<HTMLButtonElement>(null);
   const legendHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -182,6 +193,45 @@ export default function App() {
   const showReachBarrier = useCallback((fix: ReachFix) => {
     setReachFocus({ barrierId: fix.barrier.id, lat: fix.barrier.lat, lon: fix.barrier.lon, nonce: Date.now() });
   }, []);
+
+  // ---- Live location from launch (GPS only; the motion-sensor prompt waits for a trip) ----
+  const { enableLocation } = sensors;
+  useEffect(() => {
+    if (onboarded) enableLocation();
+  }, [onboarded, enableLocation]);
+  const livePosition: NavPosition | null = useMemo(
+    () => (sensors.fix ? { lat: sensors.fix.lat, lon: sensors.fix.lon, heading: null, accuracy: sensors.fix.accuracy, simulated: false, ts: sensors.fix.ts } : null),
+    [sensors.fix],
+  );
+  // Centre on the traveller once, when the first fix lands inside the zone.
+  const autoCentredRef = useRef(false);
+  useEffect(() => {
+    if (!sensors.fix || !zone || autoCentredRef.current) return;
+    autoCentredRef.current = true;
+    const { south, west, north, east } = zone.bbox;
+    const inside = sensors.fix.lat >= south && sensors.fix.lat <= north && sensors.fix.lon >= west && sensors.fix.lon <= east;
+    setFollow(inside);
+  }, [sensors.fix, zone]);
+  const locateMe = useCallback(() => {
+    enableLocation();
+    setFollow(true);
+  }, [enableLocation]);
+
+  // A returning Listen-mode traveller lands in Listen and is greeted, no tap needed.
+  useEffect(() => {
+    if (onboarded && getMode() === 'listen' && currentRouteIsHome()) {
+      setListenGreet(true);
+      navigate('listen');
+    }
+    function currentRouteIsHome() {
+      return location.hash === '' || location.hash === '#/' || location.hash === '#/home';
+    }
+    // On mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (route !== 'listen' && route !== 'welcome') setListenGreet(false);
+  }, [route]);
 
   // ---- Data loading: everything in parallel; partial failures keep the rest. ----
   useEffect(() => {
@@ -375,6 +425,7 @@ export default function App() {
   );
   const onReportSubmitted = useCallback(
     (rep: ReportItem) => {
+      addPoints('report');
       if (rep.kind === 'barrier' && rep.status === 'pending') setPendingReports((list) => [...list, rep]);
       if (rep.status !== 'pending') onResolved();
     },
@@ -425,6 +476,39 @@ export default function App() {
     },
     [profiles, planner],
   );
+
+  const finishOnboarding = useCallback(
+    async (choice: OnboardingChoice) => {
+      const m = PROFILE_MODE[choice.profile];
+      planner.setProfile(choice.profile);
+      setMode(m);
+      try {
+        await createUser(choice.name, choice.profile, lang, false);
+      } catch (err) {
+        // Offline / API down: keep going with a local identity; reports will ask again when the API is back.
+        console.warn('[onboarding] user not created on the server', err);
+        setUser({ id: `local-${Date.now()}`, display_name: choice.name, trust_score: 0.3, profile: choice.profile });
+      }
+      setOnboarded(true);
+      setOnboardedState(true);
+      setListenGreet(m === 'listen');
+      navigate(m === 'listen' ? 'listen' : 'home');
+    },
+    [planner, lang],
+  );
+
+  // Points for a completed trip (once per session).
+  const tripCreditedRef = useRef(false);
+  useEffect(() => {
+    if (!navSession) {
+      tripCreditedRef.current = false;
+      return;
+    }
+    if (nav.state.arrived && !tripCreditedRef.current) {
+      tripCreditedRef.current = true;
+      addPoints('trip');
+    }
+  }, [navSession, nav.state.arrived]);
 
   // ---- Trip flow: Go -> routes -> (Move) choice / (Explore, Listen) start at once ----
   const startNavigation = useCallback(
@@ -552,6 +636,16 @@ export default function App() {
     navActive ? 0.3 : route === 'home' || showHome ? 0.56 : showChoice ? 0.54 : route === 'reach' ? 0.6 : route === 'listen' ? 0.7 : legendOpen || listOpen ? 0.5 : 0.06;
   const hidingSheet = Boolean(pickMode);
 
+  if (showWelcome) {
+    return (
+      <div className="app app--welcome">
+        <main id="main" className="main main--welcome" tabIndex={-1}>
+          <WelcomeScreen lang={lang} onLang={changeLang} onDone={finishOnboarding} initialProfile={user?.profile ?? null} initialName={user?.display_name ?? ''} />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className={`app${navActive ? ' app--nav' : ''}`}>
       <a className="skip-link" href="#main">
@@ -585,8 +679,8 @@ export default function App() {
               reachFocus={route === 'reach' ? reachFocus : null}
               onPhotographJolt={photographJolt}
               wheelsFocus={wheelsFocus}
-              userPosition={navSession ? nav.state.position : null}
-              follow={navActive && follow}
+              userPosition={navSession ? nav.state.position : livePosition}
+              follow={follow}
               onUserPan={() => setFollow(false)}
               sheetFraction={sheetFraction}
             />
@@ -623,6 +717,9 @@ export default function App() {
                 onMode={chooseMode}
                 onGo={() => void go()}
                 onDemo={() => runDemo()}
+                onReport={reportBarrier}
+                fix={sensors.fix}
+                geoError={sensors.geoError}
                 goBusy={goBusy}
                 goError={goError}
                 headingRef={homeHeadingRef}
@@ -691,11 +788,15 @@ export default function App() {
               <ListenScreen
                 nav={nav}
                 planner={planner}
+                sensors={sensors}
                 lang={lang}
                 onRoute={routeForListen}
                 onDemo={() => runDemo('listen')}
                 onEnd={endNavigation}
                 onReport={reportBarrier}
+                onHome={() => navigate('home')}
+                onReported={onReportSubmitted}
+                autoGreet={listenGreet}
                 headingRef={screenHeadingRef}
               />
             )}
@@ -717,6 +818,18 @@ export default function App() {
                   </button>
                 )}
               </div>
+            )}
+
+            {!navActive && !pickMode && route !== 'listen' && route !== 'reach' && (
+              <button type="button" className={`locatebtn${follow && sensors.fix ? ' locatebtn--on' : ''}`} onClick={locateMe} aria-label={t('map.locate')} title={t('map.locate')} aria-pressed={follow && Boolean(sensors.fix)}>
+                <Icon name="locate" size={24} />
+              </button>
+            )}
+            {(route === 'home' || route === 'navigate') && !navActive && !pickMode && (
+              <button type="button" className="fab fab--top" onClick={reportBarrier}>
+                <Icon name="flag" size={20} />
+                <span className="fab__text">{t('report.short')}</span>
+              </button>
             )}
 
             {route === 'map' && !legendOpen && !listOpen && !pickMode && (
@@ -759,6 +872,16 @@ export default function App() {
               <SettingsPage planner={planner} lang={lang} onLangChange={changeLang} highContrast={highContrast} onToggleContrast={toggleContrast} onProfile={chooseProfile} />
             )}
             {route === 'more' && <MorePage />}
+            {route === 'demo' && (
+              <DemoPage
+                lang={lang}
+                onRunDemo={(m) => {
+                  chooseMode(m);
+                  runDemo(m);
+                }}
+                onChanged={onResolved}
+              />
+            )}
           </main>
         )}
 

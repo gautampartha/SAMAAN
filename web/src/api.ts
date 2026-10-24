@@ -941,3 +941,33 @@ export const reachApi = {
     return getJson<ReachResponse>(`/reach?${q.toString()}`, signal);
   },
 };
+
+// ---------- Demo mode (GET /demo/status, POST /demo/reset) ----------
+
+export interface DemoCounts {
+  images?: { total: number; real: number; synthetic: number; mapillary: number; own_photo: number };
+  barriers?: { total: number; real: number; synthetic: number; active: number };
+  coverage?: { edges_total: number; edges_known_real: number; edges_known_any: number; pct_real: number; pct_any: number };
+  reports?: { pending: number; verified: number; rejected: number; fixed: number };
+  votes?: number;
+  users?: number;
+  rides?: number;
+  missions?: number;
+  zone?: { name: string; display_name: LocalizedName | string };
+  synthetic_present?: boolean;
+}
+
+export interface DemoReset extends Omit<DemoCounts, 'status'> {
+  status?: string;
+  deleted?: Record<string, number>;
+  recompute?: unknown;
+}
+
+export const demoApi = {
+  status: (signal?: AbortSignal) => getJson<DemoCounts>('/demo/status', signal),
+  reset: async (signal?: AbortSignal): Promise<DemoReset> => {
+    const res = await fetch(`${API_URL}/demo/reset`, { method: 'POST', signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new ApiError('/demo/reset', res.status, await readDetail(res));
+    return (await res.json()) as DemoReset;
+  },
+};
