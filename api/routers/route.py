@@ -36,6 +36,7 @@ def route(
     demo: str | None = Query(None, description="use a stored demo trip, e.g. riya"),
     profile: str | None = Query(None), risk: str | None = Query(None),
     depart: str | None = Query(None, description="ISO datetime; only the hour matters"),
+    modes: str = Query("two", description="two = standard + samaan (UI); all = also naive_accessible (eval)"),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     ctx = get_ctx(request)
@@ -71,7 +72,7 @@ def route(
             raise HTTPException(404, f"origin or destination is more than {max_m:.0f} m from the footpath network")
         snap_info = {"origin": {"lat": from_lat, "lon": from_lon, "snap_distance_m": round(d_o, 1)},
                      "destination": {"lat": to_lat, "lon": to_lon, "snap_distance_m": round(d_d, 1)}}
-    result = route_all_modes(ctx, origin, dest, profile, risk, depart_dt)
+    result = route_all_modes(ctx, origin, dest, profile, risk, depart_dt, modes=modes)
     meta = {m.key: m.value for m in session.exec(select(Meta)).all()}
     result["synthetic_overlay"] = meta.get("synthetic") == "true"
     for r in result["routes"].values():
@@ -79,6 +80,18 @@ def route(
             r["synthetic"] = bool(r["synthetic"] or result["synthetic_overlay"])
     result.update(snap_info)
     return result
+
+
+@router.get("/profiles")
+def profiles() -> dict[str, Any]:
+    p = config.profiles()
+    modes = p.get("profile_modes", {})
+    out = []
+    for pid, prof in p["profiles"].items():
+        out.append({"id": pid, "name_en": prof["name"]["en"], "name_hi": prof["name"]["hi"],
+                    "description_en": (prof.get("description") or {}).get("en", ""), "description_hi": (prof.get("description") or {}).get("hi", ""),
+                    "mode": modes.get(pid, "move"), "speed_m_s": prof["speed_m_s"]["value"], "speed_source": prof["speed_m_s"]["source"]})
+    return {"profiles": out}
 
 
 @router.post("/route/reload")

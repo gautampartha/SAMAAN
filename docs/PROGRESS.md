@@ -912,5 +912,57 @@ wheels layer, jolt markers, replay demo.
 
 ---
 
+## Pivot after the mentoring round (2026-10-24)
+
+Mentor feedback, verbatim in spirit:
+1. How is the latest data collected, in real time?
+2. Three routes for one trip is confusing: two routes, each with a confidence score.
+3. A disabled person should not have to "explore" a campus first; the system must work anywhere.
+4. Three target users, each with their own mode: mobility (route planner), dyslexic/autistic
+   (Explore mode: camera view with big arrows and pictograms), blind (voice-driven app).
+5. Phone-first UI in the style of modern iOS navigation apps (black turn banner, white cards,
+   blue #1561F1 on off-white #FAFAF9, bottom sheet with arrival · min · km, statistics cards).
+
+Decisions:
+- Zone moved to the Manipal University Jaipur campus (richly mapped footways; the team can
+  capture real imagery on site during the hackathon).
+- `/route` returns **two** routes by default, `standard` (what a normal map does) and `samaan`,
+  each with a **confidence score** from verified coverage, image age, barrier verification and
+  unknown share, plus "segments without recent imagery". The third mode stays available for
+  evaluation only (`modes=all`).
+- **Turn-by-turn steps** on every route (direction, distance, street, warnings) feed the text
+  banner (mobility), the arrows (Explore) and speech (Listen).
+- Two new profiles: `blind_low_vision` and `cognitive`; the UI exposes three modes: Move,
+  Explore, Listen.
+- Real-time data answer: the app itself is the sensor. Navigation can contribute photos every
+  N metres (consent toggle), rides verify footpaths, reports update within a minute, temporary
+  barriers expire, and every route shows how fresh its evidence is. Any area can be built from
+  OSM in under a minute, degrading honestly to "unknown" where nothing has been seen.
+- Detector: zero-shot pretrained model for vehicles first; India-trained model when labels exist.
+
+### Pivot work done (backend)
+- `/route` now returns `standard` + `samaan` by default (`modes=all` adds `naive_accessible` for
+  evaluation). Every route carries `confidence {score, label, factors}` (weights in
+  `profiles.yaml` → `route_confidence`: verified share 0.45, imagery freshness 0.25 with a
+  90-day fresh / 365-day stale ramp, barrier verification 0.15, known share 0.15),
+  `segments_total`, `segments_no_recent_imagery(_pct)`, and **turn-by-turn `steps`** (depart /
+  turns by heading change ≥ 15° / cross with signal info / arrive; street names from OSM; warnings
+  = barriers on the following edges with the impassable flag for the chosen profile; legs under
+  6 m such as corner links never create turns; instructions in English and Hindi).
+- Profiles: `cognitive` (Explore mode: fewer and signalised crossings, calm penalties) and
+  `blind_low_vision` (Listen mode: unsignalised crossings as a last resort, open drains
+  impassable, carriageway walking strongly penalised), with descriptions and a `profile_modes`
+  map; `GET /profiles` for the UI. All values team_estimate / TODO: cite.
+- Temporary barriers expire after `temporary_expiry_days` (14, taxonomy.yaml) when not seen again;
+  runs in `make coverage` and after every upload recompute.
+- Zero-shot detector: `config/zero_shot.yaml` maps COCO classes (motorcycle, bicycle, car, truck,
+  bus → parked_vehicle; hydrant, bench, planter, signs → fixed_obstacle) onto the taxonomy;
+  `make infer-zero-shot` runs the pretrained YOLO11n with that map. On the 18 real Mapillary
+  images of the campus (2017): 3 detections → 2 real `parked_vehicle` barriers after side-aware
+  snapping. Limits are written in the config: it cannot see steps, drains, kerbs or surfaces, and
+  a moving vehicle looks like a parked one in a single frame.
+- Tests: 119 passing (steps on a toy corner + crossing, confidence fresh vs stale, two-route
+  contract, profiles endpoint).
+
 ## Phase P10 — Eval, demo, polish
-_Not started. Waiting for "go"._
+_Rescoped after the pivot; starts after the pivot work._

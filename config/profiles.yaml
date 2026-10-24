@@ -21,6 +21,13 @@ standards:
     value: null
     source: "TODO: cite Harmonised Guidelines 2021, kerb ramp width"
 
+# Route confidence (Phase 2): weighted mix of evidence on the route. team_estimate.
+route_confidence:
+  weights: { verified: 0.45, freshness: 0.25, barrier_confidence: 0.15, known: 0.15 }
+  fresh_image_days: 90          # imagery younger than this is fully fresh; linear decay to 0 at stale_image_days
+  stale_image_days: 365
+  labels: { high: 0.75, medium: 0.5 }   # score >= high -> "high", >= medium -> "medium", else "low"
+
 # Risk tolerance = how unknown (never observed) edges are costed (plan 6.6).
 unknown_multiplier:
   strict: 5.0
@@ -57,10 +64,30 @@ edge_kind_rules:
     crossing: { penalty_seconds_signalised: 25, penalty_seconds_unsignalised: 20, kerb_ramp_missing_impassable: false }
     connector: { penalty_seconds: 4 }
     road_shared: { multiplier: 1.4 }
+  cognitive:
+    steps: { penalty_seconds: 20 }
+    crossing: { penalty_seconds_signalised: 30, penalty_seconds_unsignalised: 60 }   # unsignalised crossings are hard to judge
+    connector: { penalty_seconds: 10 }
+    road_shared: { multiplier: 1.8 }
+  blind_low_vision:
+    steps: { penalty_seconds: 15 }
+    crossing: { penalty_seconds_signalised: 30, penalty_seconds_unsignalised: 120 }  # unsignalised crossings: last resort
+    connector: { penalty_seconds: 10 }
+    road_shared: { multiplier: 2.5 }
+
+# UI mode per profile: move = map + turn banner, explore = camera arrows, listen = voice, baseline = not selectable
+profile_modes:
+  walker: baseline
+  wheelchair_manual: move
+  elderly_walking_aid: move
+  pram: move
+  cognitive: explore
+  blind_low_vision: listen
 
 profiles:
   walker:
     name: { en: "Walker", hi: "पैदल यात्री" }
+    description: { en: "Baseline: what a normal map assumes.", hi: "आधार: सामान्य मैप की धारणा।" }
     speed_m_s:
       value: 1.3
       source: "TODO: cite (placeholder walking speed; replace with cited value)"
@@ -68,6 +95,7 @@ profiles:
 
   wheelchair_manual:
     name: { en: "Manual wheelchair", hi: "हाथ से चलने वाली व्हीलचेयर" }
+    description: { en: "No steps, no high kerbs, ramps at crossings.", hi: "सीढ़ियाँ नहीं, ऊँचे कर्ब नहीं, क्रॉसिंग पर रैंप।" }
     speed_m_s:
       value: 0.9
       source: "TODO: cite (placeholder; replace with cited value)"
@@ -91,6 +119,7 @@ profiles:
 
   elderly_walking_aid:
     name: { en: "Elderly, with walking aid", hi: "बुज़ुर्ग, सहारे के साथ" }
+    description: { en: "Slower pace, avoids rough surfaces and long detours.", hi: "धीमी चाल, ऊबड़-खाबड़ सतह और लंबे चक्कर से बचाव।" }
     speed_m_s:
       value: 0.8
       source: "TODO: cite (placeholder; replace with cited value)"
@@ -114,6 +143,7 @@ profiles:
 
   pram:
     name: { en: "Pram / stroller", hi: "बच्चा गाड़ी" }
+    description: { en: "No steps; narrow gaps and drains matter.", hi: "सीढ़ियाँ नहीं; संकरे रास्ते और नालियाँ मायने रखती हैं।" }
     speed_m_s:
       value: 1.1
       source: "TODO: cite (placeholder; replace with cited value)"
@@ -133,4 +163,54 @@ profiles:
       construction:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 20, 2: 40, 3: 90 } }
       lift_out_of_service: { impassable_at_or_above: 2, penalty_seconds_by_severity: { 1: 120 } }
       foot_overbridge_stairs_only: { impassable_at_or_above: 2, penalty_seconds_by_severity: { 1: 120 } }
+    rules_source: team_estimate
+
+  cognitive:
+    # Dyslexic / autistic users: simple routes, fewer and safer crossings, predictable surfaces.
+    name: { en: "Simple route (Explore)", hi: "सरल रास्ता (एक्सप्लोर)" }
+    description: { en: "Fewer crossings and turns, calm step-by-step arrows.", hi: "कम क्रॉसिंग और मोड़, शांत चरण-दर-चरण तीर।" }
+    speed_m_s:
+      value: 1.1
+      source: "TODO: cite (placeholder; replace with cited value)"
+    rules:
+      curb_ramp:          { impassable_at_or_above: null, penalty_seconds_by_severity: {} }
+      steps_or_high_kerb: { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 10, 3: 20, 4: 40 } }
+      broken_surface:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 10, 3: 20, 4: 40 } }
+      open_drain:         { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60 } }
+      fixed_obstacle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 10, 3: 20, 4: 40 } }
+      parked_vehicle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60 } }
+      vendor_encroachment: { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60 } }
+      bike_barrier:       { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 30, 4: 40 } }
+      no_footpath:        { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 20, 2: 40, 3: 60, 4: 90, 5: 120 } }
+      footpath_end:       { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 20, 2: 40, 3: 60, 4: 90, 5: 120 } }
+      missing_ramp_at_crossing: { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 30 } }
+      waterlogging:       { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60 } }
+      construction:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 30, 2: 60, 3: 90 } }
+      lift_out_of_service: { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 60, 2: 120 } }
+      foot_overbridge_stairs_only: { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 60, 2: 90, 3: 120 } }
+    rules_source: team_estimate
+
+  blind_low_vision:
+    # Blind / low-vision users: unsignalised crossings and open drains are the dangers; steps are fine with care.
+    name: { en: "Blind / low vision (Listen)", hi: "दृष्टिबाधित (सुनें)" }
+    description: { en: "Signalised crossings, no open drains, spoken directions.", hi: "सिग्नल वाली क्रॉसिंग, खुली नालियाँ नहीं, बोले गए निर्देश।" }
+    speed_m_s:
+      value: 0.9
+      source: "TODO: cite (placeholder; replace with cited value)"
+    rules:
+      curb_ramp:          { impassable_at_or_above: null, penalty_seconds_by_severity: {} }
+      steps_or_high_kerb: { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 10, 2: 15, 3: 20, 4: 30, 5: 45 } }
+      broken_surface:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60 } }
+      open_drain:         { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 30, 2: 60 } }
+      fixed_obstacle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 15, 2: 30, 3: 45, 4: 60 } }
+      parked_vehicle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 15, 2: 30, 3: 60, 4: 90 } }
+      vendor_encroachment: { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 15, 2: 30, 3: 60, 4: 90 } }
+      bike_barrier:       { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 15, 2: 30, 3: 45, 4: 60 } }
+      no_footpath:        { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 30, 2: 60, 3: 120 } }
+      footpath_end:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 30, 2: 60, 3: 120 } }
+      missing_ramp_at_crossing: { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 30 } }
+      waterlogging:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 15, 2: 30, 3: 60 } }
+      construction:       { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 60, 2: 120 } }
+      lift_out_of_service: { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 60, 2: 120 } }
+      foot_overbridge_stairs_only: { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 30, 2: 60, 3: 90 } }
     rules_source: team_estimate

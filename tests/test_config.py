@@ -23,7 +23,8 @@ def test_speeds_have_source():
 
 
 def test_four_profiles_present():
-    assert set(config.profiles()["profiles"]) == {"walker", "wheelchair_manual", "elderly_walking_aid", "pram"}
+    assert set(config.profiles()["profiles"]) == {"walker", "wheelchair_manual", "elderly_walking_aid", "pram", "cognitive", "blind_low_vision"}
+    assert set(config.profiles()["profile_modes"]) == set(config.profiles()["profiles"])
 
 
 def test_taxonomy_detector_classes():

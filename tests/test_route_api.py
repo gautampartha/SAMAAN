@@ -13,18 +13,29 @@ def client(toy_db):
         yield c
 
 
-def test_route_demo_three_modes(client):
+def test_route_demo_two_routes_with_confidence_and_steps(client):
     r = client.get("/route", params={"demo": "riya", "profile": "wheelchair_manual", "risk": "strict"})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body["routes"]) == {"shortest", "naive_accessible", "samaan"}
+    assert set(body["routes"]) == {"standard", "samaan"}
     assert body["synthetic_overlay"] is True and body["demo"] == "riya"
-    shortest, samaan = body["routes"]["shortest"], body["routes"]["samaan"]
+    shortest, samaan = body["routes"]["standard"], body["routes"]["samaan"]
     assert shortest is not None and samaan is not None
-    for rt in (shortest, body["routes"]["naive_accessible"], samaan):
+    for rt in (shortest, samaan):
         assert rt["geometry"]["type"] == "LineString" and len(rt["geometry"]["coordinates"]) >= 2
         assert rt["length_m"] > 0 and rt["eta_s"] > 0 and 0 <= rt["verified_pct"] <= 100
         assert "unknown_stretches" in rt and "barriers" in rt and rt["synthetic"] is True
+        assert 0 <= rt["confidence"]["score"] <= 1 and rt["confidence"]["label"] in ("high", "medium", "low")
+        assert rt["segments_total"] == len(rt["edge_ids"]) and 0 <= rt["segments_no_recent_imagery"] <= rt["segments_total"]
+        assert rt["steps"][0]["type"] == "depart" and rt["steps"][-1]["type"] == "arrive"
+        assert rt["steps"][-1]["cumulative_m"] == pytest.approx(rt["length_m"], abs=1.0)
+        assert all(st["instruction_hi"] for st in rt["steps"])
+    full = client.get("/route", params={"demo": "riya", "modes": "all"}).json()
+    assert set(full["routes"]) == {"standard", "samaan", "naive_accessible"}
+    profiles = client.get("/profiles").json()["profiles"]
+    assert {p["id"] for p in profiles} >= {"wheelchair_manual", "cognitive", "blind_low_vision", "walker"}
+    assert next(p for p in profiles if p["id"] == "blind_low_vision")["mode"] == "listen"
+    assert client.get("/route", params={"demo": "riya", "profile": "blind_low_vision"}).status_code == 200
     # the seeded story puts steps on the shortest path; SAMAAN must not route a wheelchair over them
     assert any(b["class"] == "steps_or_high_kerb" for b in shortest["barriers"])
     assert not any(b["impassable_for_profile"] for b in samaan["barriers"])

@@ -4,7 +4,7 @@ PY      := .venv/bin/python
 UV      := uv
 DB      := data/processed/samaan.sqlite
 
-.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval missions export-active ride-calibration api test lint web web-install clean-db help
+.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval missions export-active ride-calibration infer-zero-shot api test lint web web-install clean-db help
 
 help:
 	@echo "make setup        create .venv (Python 3.11) and install deps"
@@ -72,6 +72,9 @@ eval:
 
 infer:
 	$(PY) -m ml.infer --weights $(WEIGHTS)
+
+infer-zero-shot:
+	$(PY) -m ml.infer --zero-shot $(if $(REPLACE),--replace,)
 
 geolocate:
 	$(PY) -m pipeline.geolocate.run

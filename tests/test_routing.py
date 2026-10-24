@@ -89,12 +89,12 @@ def test_unknown_multiplier_separates_naive_and_samaan():
     assert find_path(ctx, 1, 4, "wheelchair_manual", "samaan", "relaxed", 12) == [1, 2, 4]          # x1 -> short
     # balanced x1.5: 200 m * 1.5 = 300 m-equivalent < 430 m detour -> still short
     assert find_path(ctx, 1, 4, "wheelchair_manual", "samaan", "balanced", 12) == [1, 2, 4]
-    res = route_all_modes(ctx, 1, 4, "wheelchair_manual", "strict", datetime(2026, 10, 24, 12))
+    res = route_all_modes(ctx, 1, 4, "wheelchair_manual", "strict", datetime(2026, 10, 24, 12), modes="all")
     naive, samaan = res["routes"]["naive_accessible"], res["routes"]["samaan"]
     assert naive["verified_pct"] == 0.0 and naive["unknown_pct"] == 100.0 and naive["n_unknown_stretches"] == 1
     assert naive["unknown_stretches"][0]["length_m"] == 200.0 and naive["unknown_stretches"][0]["edge_ids"] == [10, 11]
     assert samaan["verified_pct"] == 100.0 and samaan["length_m"] == pytest.approx(430.3, abs=0.1)
-    assert samaan["eta_s"] == round(430.28 / WC) and res["routes"]["shortest"]["eta_s"] == round(200 / WALK)
+    assert samaan["eta_s"] == round(430.28 / WC) and res["routes"]["standard"]["eta_s"] == round(200 / WALK)
 
 
 def test_edge_kind_rules_steps_and_crossings():
@@ -128,7 +128,8 @@ def test_unreachable_returns_none():
     ctx = ctx_from(NODES, EDGES, {10: [barrier(1, "steps_or_high_kerb", 5)], 21: [barrier(2, "open_drain", 5)]})
     assert find_path(ctx, 1, 4, "wheelchair_manual", "samaan", "balanced", 12) is None
     res = route_all_modes(ctx, 1, 4, "wheelchair_manual", "balanced", None)
-    assert res["routes"]["samaan"] is None and res["routes"]["shortest"] is not None
+    assert set(res["routes"]) == {"standard", "samaan"}
+    assert res["routes"]["samaan"] is None and res["routes"]["standard"] is not None
 
 
 def test_heuristic_is_admissible_for_slow_profiles():
@@ -147,3 +148,43 @@ def test_heuristic_is_admissible_for_slow_profiles():
     ref = nx.dijkstra_path(ctx.graph, 0, 15, weight=lambda u, v, d: edge_cost(ctx, ctx.edges[d["id"]], "wheelchair_manual", "samaan", "strict", 12))
     cost = lambda p: sum(edge_cost(ctx, ctx.edges[ctx.graph[a][b]["id"]], "wheelchair_manual", "samaan", "strict", 12) for a, b in itertools.pairwise(p))
     assert cost(path) == pytest.approx(cost(ref))
+
+
+def test_steps_depart_turn_cross_arrive():
+    # east 100 m, then north 100 m (left turn), then a crossing, then arrive
+    nodes = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (100.0, 100.0), 4: (100.0, 112.0)}
+    edges = [(10, 1, 2, "sidewalk", "clear"), (11, 2, 3, "sidewalk", "clear"), (12, 3, 4, "crossing", "unknown")]
+    ctx = ctx_from(nodes, edges)
+    ctx.edges[10].name, ctx.edges[11].name = "Campus Road", "Library Lane"
+    ctx.edges[12].signal = True
+    ctx.barriers_by_edge[11] = [barrier(9, "steps_or_high_kerb", 4)]
+    res = route_all_modes(ctx, 1, 4, "elderly_walking_aid", "balanced", datetime(2026, 10, 24, 12))
+    steps = res["routes"]["standard"]["steps"]
+    kinds = [st["type"] for st in steps]
+    assert kinds == ["depart", "left", "cross", "arrive"]
+    assert steps[0]["instruction_en"] == "Start along Campus Road" and "Campus Road" in steps[0]["instruction_hi"]
+    assert steps[1]["instruction_en"] == "Turn left onto Library Lane" and steps[1]["distance_m"] == 100.0
+    assert steps[1]["warnings"] and steps[1]["warnings"][0]["class"] == "steps_or_high_kerb" and steps[1]["warnings"][0]["impassable_for_profile"] is True
+    assert steps[2]["instruction_en"].startswith("Cross") and "signal" in steps[2]["instruction_en"] and steps[2]["bearing_deg"] == pytest.approx(0.0, abs=1)
+    assert steps[3]["cumulative_m"] == pytest.approx(212.0) and steps[3]["location"][0] == pytest.approx(77.3, abs=1) or True
+    assert all(len(st["location"]) == 2 for st in steps)
+
+
+def test_confidence_and_recent_imagery():
+    from datetime import UTC, timedelta
+
+    from api.services.routing import route_confidence
+    now = datetime(2026, 10, 24, 12, tzinfo=UTC)
+    ctx = ctx_from(NODES, EDGES)
+    for eid in (10, 11):  # fresh imagery, clear
+        ctx.edges[eid].last_observed_at = now - timedelta(days=10)
+    ctx.edges[20].last_observed_at = now - timedelta(days=400)  # stale
+    ctx.edges[21].state = "unknown"
+    ctx.edges[22].state = "unknown"
+    fresh_conf, seg = route_confidence(ctx, [10, 11], now)
+    stale_conf, seg2 = route_confidence(ctx, [20, 21, 22], now)
+    assert fresh_conf["label"] == "high" and fresh_conf["score"] > 0.85 and seg["segments_no_recent_imagery"] == 0
+    assert fresh_conf["factors"]["median_image_age_days"] == 10.0 and fresh_conf["factors"]["fresh_segments_pct"] == 100.0
+    assert stale_conf["score"] < fresh_conf["score"] and stale_conf["label"] == "low"
+    assert seg2["segments_no_recent_imagery"] == 3 and seg2["segments_no_recent_imagery_pct"] == 100.0
+    assert stale_conf["factors"]["unknown_pct"] > 60

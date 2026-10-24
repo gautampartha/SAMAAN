@@ -1,0 +1,20 @@
+# Zero-shot detector (pivot, 2026-10-24): a general pretrained COCO model used until the
+# India-trained detector exists. Only classes with a sensible mapping are kept; everything else
+# is dropped. Honest limits: it cannot see steps, drains, kerbs or broken surfaces.
+weights: "yolo11n.pt"            # Ultralytics COCO-pretrained nano (downloaded automatically)
+model_name: "zero_shot_coco_yolo11n"
+min_conf: 0.35
+# COCO class name -> SAMAAN taxonomy id
+class_map:
+  motorcycle: parked_vehicle
+  bicycle: parked_vehicle
+  car: parked_vehicle
+  truck: parked_vehicle
+  bus: parked_vehicle
+  fire hydrant: fixed_obstacle
+  bench: fixed_obstacle
+  potted plant: fixed_obstacle
+  stop sign: fixed_obstacle
+  parking meter: fixed_obstacle
+notes:
+  - "A moving vehicle on the road is indistinguishable from a parked one on the footpath in a single frame; the side-aware snap (within 12 m of a footpath) and the time-of-day profile are the only filters. Treat results as candidates (confidence capped) until a report confirms."

@@ -254,12 +254,105 @@ export async function recomputeCoverage(signal?: AbortSignal): Promise<void> {
 
 // ---------- Route planner (GET /route, GET /search) ----------
 
-export type Profile = 'walker' | 'wheelchair_manual' | 'elderly_walking_aid' | 'pram';
-export const PROFILES: readonly Profile[] = ['walker', 'wheelchair_manual', 'elderly_walking_aid', 'pram'] as const;
+export type Profile = 'walker' | 'wheelchair_manual' | 'elderly_walking_aid' | 'pram' | 'cognitive' | 'blind_low_vision';
+export const PROFILES: readonly Profile[] = ['walker', 'wheelchair_manual', 'elderly_walking_aid', 'pram', 'cognitive', 'blind_low_vision'] as const;
+/** Profiles a traveller can pick (the walker is the comparison baseline, never selectable). */
+export const SELECTABLE_PROFILES: readonly Profile[] = ['wheelchair_manual', 'elderly_walking_aid', 'pram', 'cognitive', 'blind_low_vision'] as const;
 export type Risk = 'strict' | 'balanced' | 'relaxed';
 export const RISKS: readonly Risk[] = ['strict', 'balanced', 'relaxed'] as const;
-export type RouteMode = 'shortest' | 'naive_accessible' | 'samaan';
-export const ROUTE_MODES: readonly RouteMode[] = ['shortest', 'naive_accessible', 'samaan'] as const;
+/** The two routes shown per trip. `naive_accessible` exists on the API (`&modes=all`) but is not used in the UI. */
+export type RouteMode = 'standard' | 'samaan';
+export const ROUTE_MODES: readonly RouteMode[] = ['standard', 'samaan'] as const;
+
+// ---------- Profiles (GET /profiles) ----------
+
+/** How a profile is served: MOVE (map + cards), EXPLORE (camera + arrow), LISTEN (voice), or the walker baseline. */
+export type AppMode = 'move' | 'explore' | 'listen';
+export type ProfileMode = AppMode | 'baseline';
+
+export interface ProfileInfo {
+  id: Profile;
+  name_en: string;
+  name_hi: string;
+  description_en: string;
+  description_hi: string;
+  mode: ProfileMode;
+  speed_m_s: number;
+}
+
+export interface ProfilesResponse {
+  profiles: ProfileInfo[];
+}
+
+/** Used until `/profiles` answers (and when it never does): the same ids and modes as the API. */
+export const FALLBACK_PROFILES: readonly ProfileInfo[] = [
+  { id: 'wheelchair_manual', name_en: 'Manual wheelchair', name_hi: 'मैनुअल व्हीलचेयर', description_en: '', description_hi: '', mode: 'move', speed_m_s: 0.9 },
+  { id: 'elderly_walking_aid', name_en: 'Elderly with walking aid', name_hi: 'छड़ी या वॉकर वाले बुज़ुर्ग', description_en: '', description_hi: '', mode: 'move', speed_m_s: 0.7 },
+  { id: 'pram', name_en: 'Pram', name_hi: 'बच्चा-गाड़ी (प्रैम)', description_en: '', description_hi: '', mode: 'move', speed_m_s: 1.1 },
+  { id: 'cognitive', name_en: 'Dyslexic or autistic', name_hi: 'डिस्लेक्सिया या ऑटिज़्म', description_en: '', description_hi: '', mode: 'explore', speed_m_s: 1.2 },
+  { id: 'blind_low_vision', name_en: 'Blind or low vision', name_hi: 'दृष्टिहीन या कम दृष्टि', description_en: '', description_hi: '', mode: 'listen', speed_m_s: 0.9 },
+] as const;
+
+export const profileApi = {
+  list: (signal?: AbortSignal) => getJson<ProfilesResponse>('/profiles', signal),
+};
+
+// ---------- Turn-by-turn steps and confidence ----------
+
+export type StepType =
+  | 'depart'
+  | 'straight'
+  | 'slight_left'
+  | 'left'
+  | 'sharp_left'
+  | 'slight_right'
+  | 'right'
+  | 'sharp_right'
+  | 'uturn'
+  | 'cross'
+  | 'arrive';
+
+export interface StepWarning {
+  class: BarrierClassId | ReportOnlyClassId | (string & {});
+  name_en: string;
+  name_hi: string;
+  severity: Severity;
+  impassable_for_profile: boolean;
+}
+
+export interface RouteStep {
+  index: number;
+  type: StepType | (string & {});
+  instruction_en: string;
+  instruction_hi: string;
+  /** Metres from the previous step. */
+  distance_m: number;
+  /** Metres from the origin. */
+  cumulative_m: number;
+  /** [lon, lat] */
+  location: [number, number];
+  /** Direction of travel after the step, degrees clockwise from north. */
+  bearing_deg: number;
+  street_en: string | null;
+  street_hi: string | null;
+  warnings: StepWarning[];
+  edge_ids: number[];
+}
+
+export type ConfidenceLabel = 'high' | 'medium' | 'low';
+
+export interface RouteConfidence {
+  /** 0-1 */
+  score: number;
+  label: ConfidenceLabel;
+  factors: {
+    verified_pct: number;
+    median_image_age_days: number | null;
+    barrier_confidence: number | null;
+    unknown_pct: number;
+    fresh_segments_pct: number;
+  };
+}
 
 export interface RouteBarrier {
   id: number;
@@ -307,6 +400,11 @@ export interface RouteResult {
   unknown_stretches: UnknownStretch[];
   n_unknown_stretches: number;
   synthetic: boolean;
+  confidence: RouteConfidence;
+  segments_total: number;
+  segments_no_recent_imagery: number;
+  segments_no_recent_imagery_pct: number;
+  steps: RouteStep[];
 }
 
 export interface RoutePoint {
@@ -327,7 +425,7 @@ export interface RouteResponse {
   demo?: 'riya';
   label_en?: string;
   label_hi?: string;
-  routes: Record<RouteMode, RouteResult | null>;
+  routes: Record<RouteMode, RouteResult | null> & { naive_accessible?: RouteResult | null };
 }
 
 export interface RouteParams {

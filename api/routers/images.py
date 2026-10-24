@@ -48,6 +48,9 @@ def _parse_dt(value: str | None) -> datetime:
 def recompute_all(request: Request | None = None) -> dict[str, Any]:
     """Coverage + states, then refresh the in-memory routing graph. Used as a background task."""
     with session_scope() as session:
+        from pipeline.state.expire import expire_temporary_barriers
+
+        expired = expire_temporary_barriers(session)
         cov = compute_coverage(session)
         states = recompute_states(session)
         if request is not None:
@@ -56,7 +59,7 @@ def recompute_all(request: Request | None = None) -> dict[str, Any]:
 
             request.app.state.graph = load_nx_from_db(session)
             request.app.state.routing = build_context(session)
-    return {"coverage": cov, "states": states}
+    return {"coverage": cov, "states": states, "expired": expired}
 
 
 @router.post("/images", status_code=201)

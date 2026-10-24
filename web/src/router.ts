@@ -1,25 +1,65 @@
-// Tiny hash router: `#/` -> map, `#/capture`, `#/validate`, `#/missions`, `#/reach`, `#/ride`. No dependency needed.
+// Tiny hash router, no dependency. `#/` (and `#/home`) -> Home; the other pages are listed below.
+// Tabs: Home, Navigate (also Explore / Listen), Contribute, More (Map, Validate, Missions, Reach Gap,
+// Ride, Capture, Statistics, Settings).
 import { useEffect, useState } from 'react';
 
-export type Route = 'map' | 'capture' | 'validate' | 'missions' | 'reach' | 'ride';
-export const ROUTES: readonly Route[] = ['map', 'capture', 'validate', 'missions', 'reach', 'ride'] as const;
+export type Route =
+  | 'home'
+  | 'navigate'
+  | 'explore'
+  | 'listen'
+  | 'contribute'
+  | 'more'
+  | 'map'
+  | 'capture'
+  | 'validate'
+  | 'missions'
+  | 'reach'
+  | 'ride'
+  | 'stats'
+  | 'settings';
 
-const HASHES: Record<Route, string> = {
-  map: '#/',
-  capture: '#/capture',
-  validate: '#/validate',
-  missions: '#/missions',
-  reach: '#/reach',
-  ride: '#/ride',
-};
+export const ROUTES: readonly Route[] = [
+  'home',
+  'navigate',
+  'explore',
+  'listen',
+  'contribute',
+  'more',
+  'map',
+  'capture',
+  'validate',
+  'missions',
+  'reach',
+  'ride',
+  'stats',
+  'settings',
+] as const;
+
+export type Tab = 'home' | 'navigate' | 'contribute' | 'more';
+export const TABS: readonly Tab[] = ['home', 'navigate', 'contribute', 'more'] as const;
+
+/** Pages reachable from the More tab, in display order. */
+export const MORE_ROUTES: readonly Route[] = ['map', 'validate', 'missions', 'reach', 'ride', 'capture', 'stats', 'settings'] as const;
+
+/** Routes that keep the map mounted behind their sheet / overlay. */
+export const MAP_ROUTES: readonly Route[] = ['home', 'navigate', 'explore', 'listen', 'map', 'reach'] as const;
+
+export function tabFor(route: Route): Tab {
+  if (route === 'home') return 'home';
+  if (route === 'navigate' || route === 'explore' || route === 'listen') return 'navigate';
+  if (route === 'contribute') return 'contribute';
+  return 'more';
+}
 
 export function routeFromHash(hash: string): Route {
   const clean = hash.replace(/^#\/?/, '').replace(/\/+$/, '').toLowerCase();
-  return (ROUTES as readonly string[]).includes(clean) && clean !== 'map' ? (clean as Route) : 'map';
+  if (clean === '') return 'home';
+  return (ROUTES as readonly string[]).includes(clean) ? (clean as Route) : 'home';
 }
 
 export function hrefFor(route: Route): string {
-  return HASHES[route];
+  return route === 'home' ? '#/home' : `#/${route}`;
 }
 
 export function currentRoute(): Route {
@@ -27,7 +67,8 @@ export function currentRoute(): Route {
 }
 
 export function navigate(route: Route): void {
-  if (location.hash !== HASHES[route]) location.hash = HASHES[route];
+  const href = hrefFor(route);
+  if (location.hash !== href) location.hash = href;
 }
 
 /** Current route, updated on every `hashchange`. */
