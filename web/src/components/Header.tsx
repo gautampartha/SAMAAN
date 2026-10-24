@@ -21,6 +21,8 @@ interface HeaderProps {
   plannerBtnRef: RefObject<HTMLButtonElement>;
   legendBtnRef: RefObject<HTMLButtonElement>;
   listBtnRef: RefObject<HTMLButtonElement>;
+  /** The "Reach Gap" nav link: closing that page returns focus here. */
+  reachLinkRef?: RefObject<HTMLAnchorElement>;
   synthetic: boolean;
   /** Live status line (aria-live region) rendered inside the header. */
   status: ReactNode;
@@ -47,7 +49,13 @@ export default function Header(props: HeaderProps) {
         </div>
         <nav className="nav" aria-label={t('nav.label')}>
           {ROUTES.map((r) => (
-            <a key={r} className="nav__link" href={hrefFor(r)} aria-current={props.route === r ? 'page' : undefined}>
+            <a
+              key={r}
+              ref={r === 'reach' ? props.reachLinkRef : undefined}
+              className="nav__link"
+              href={hrefFor(r)}
+              aria-current={props.route === r ? 'page' : undefined}
+            >
               {t(`nav.${r}`)}
             </a>
           ))}
@@ -78,38 +86,40 @@ export default function Header(props: HeaderProps) {
           {t('theme.highContrast')}
         </button>
         {props.route === 'map' && (
-          <>
-            <button
-              ref={props.plannerBtnRef}
-              type="button"
-              className="btn"
-              aria-expanded={props.plannerOpen}
-              aria-controls="panel-route"
-              onClick={props.onTogglePlanner}
-            >
-              {t('route.open')}
-            </button>
-            <button
-              ref={props.legendBtnRef}
-              type="button"
-              className="btn"
-              aria-expanded={props.legendOpen}
-              aria-controls="panel-legend"
-              onClick={props.onToggleLegend}
-            >
-              {t('panels.legend')}
-            </button>
-            <button
-              ref={props.listBtnRef}
-              type="button"
-              className="btn"
-              aria-expanded={props.listOpen}
-              aria-controls="panel-list"
-              onClick={props.onToggleList}
-            >
-              {t('panels.barriers')}
-            </button>
-          </>
+          <button
+            ref={props.plannerBtnRef}
+            type="button"
+            className="btn"
+            aria-expanded={props.plannerOpen}
+            aria-controls="panel-route"
+            onClick={props.onTogglePlanner}
+          >
+            {t('route.open')}
+          </button>
+        )}
+        {(props.route === 'map' || props.route === 'reach') && (
+          <button
+            ref={props.legendBtnRef}
+            type="button"
+            className="btn"
+            aria-expanded={props.legendOpen}
+            aria-controls="panel-legend"
+            onClick={props.onToggleLegend}
+          >
+            {t('panels.legend')}
+          </button>
+        )}
+        {props.route === 'map' && (
+          <button
+            ref={props.listBtnRef}
+            type="button"
+            className="btn"
+            aria-expanded={props.listOpen}
+            aria-controls="panel-list"
+            onClick={props.onToggleList}
+          >
+            {t('panels.barriers')}
+          </button>
         )}
       </nav>
     </>

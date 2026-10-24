@@ -4,6 +4,17 @@ The rest of SAMAAN does not need trained weights: routing, reach, reports and ri
 barrier table, which the synthetic seed fills until real detections exist. Train whenever the
 labels are ready, on any machine with a GPU, then bring the weights back.
 
+## Prerequisites on the GPU machine (checklist)
+- NVIDIA GPU with a current driver (`nvidia-smi` works; CUDA 12 capable, ≥ 4 GB VRAM is enough
+  for YOLO11n/s at 640 px), **or** an Apple Silicon Mac (MPS).
+- Git, **Python 3.11** (the project pins `>=3.11,<3.12`), **uv** (`pip install uv`). `make` is
+  optional; on Windows run the `python -m …` commands with the venv activated.
+- ~6 GB free disk (CUDA PyTorch ≈ 3 GB + dataset), internet on first run (dependencies, the CUDA
+  wheel, the 5 MB base weights Ultralytics downloads).
+- The labelled dataset folder **with images** (gitignored, so copy it separately; see below).
+- Not needed there: Node, the SQLite DB, the OSM download, a Mapillary token. Inference and
+  evaluation against the zone run on the demo laptop afterwards.
+
 ## What to copy to the GPU machine
 1. The repo (clone or zip; `git clone` is enough).
 2. The labelled dataset folder **including images** (images are gitignored):

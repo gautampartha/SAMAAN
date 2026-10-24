@@ -7,6 +7,7 @@ import {
   type LayerData,
   type LayerKey,
   type MissionFeature,
+  type ReachFix,
   type ReportItem,
   type ReportTarget,
   type RouteBarrier,
@@ -23,8 +24,11 @@ import RouteCompare from './components/RouteCompare';
 import ReportSheet, { type ReportMode } from './components/ReportSheet';
 import ValidatePage from './components/ValidatePage';
 import MissionsPage from './components/MissionsPage';
+import ReachPanel from './components/ReachPanel';
+import type { ReachFocus } from './components/MapView';
 import { navigate, useHashRoute, type Route } from './router';
 import { formatCoords, useRoutePlanner, type PointRole } from './routePlanner';
+import { useReachGap } from './reach';
 
 type Theme = 'auto' | 'normal' | 'high-contrast';
 const THEME_STORAGE_KEY = 'samaan.theme';
@@ -119,6 +123,25 @@ export default function App() {
   usePanelFocus(legendOpen, legendHeadingRef, legendBtnRef);
   usePanelFocus(listOpen, listHeadingRef, listBtnRef);
 
+  // ---- Reach Gap page (uses the main map; a side panel / bottom sheet like the planner) ----
+  const reach = useReachGap(route === 'reach');
+  const reachHeadingRef = useRef<HTMLHeadingElement>(null);
+  const reachLinkRef = useRef<HTMLAnchorElement>(null);
+  const [reachFocus, setReachFocus] = useState<ReachFocus | null>(null);
+  // Opening the page moves focus to its heading; Close / Escape go back to the map and return focus to the nav link.
+  useEffect(() => {
+    if (route !== 'reach') return;
+    const id = window.setTimeout(() => reachHeadingRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, [route]);
+  const closeReach = useCallback(() => {
+    navigate('map');
+    window.setTimeout(() => reachLinkRef.current?.focus(), 0);
+  }, []);
+  const showReachBarrier = useCallback((fix: ReachFix) => {
+    setReachFocus({ barrierId: fix.barrier.id, lat: fix.barrier.lat, lon: fix.barrier.lon, nonce: Date.now() });
+  }, []);
+
   // ---- Data loading: everything in parallel; partial failures keep the rest. ----
   useEffect(() => {
     const ac = new AbortController();
@@ -200,6 +223,7 @@ export default function App() {
     prevRouteRef.current = route;
     if (route === 'map' && prev !== null && prev !== 'map') void refreshLayers();
     if (route !== 'map' && reportMode) setReportMode(null);
+    if (route !== 'map') setPickMode(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, refreshLayers]);
 
@@ -367,6 +391,7 @@ export default function App() {
         plannerBtnRef={plannerBtnRef}
         legendBtnRef={legendBtnRef}
         listBtnRef={listBtnRef}
+        reachLinkRef={reachLinkRef}
         synthetic={synthetic}
         status={route === 'map' ? statusNode : null}
         route={route}
@@ -385,7 +410,7 @@ export default function App() {
           <MissionsPage lang={lang} onShowOnMap={showMission} />
         </main>
       ) : (
-        <main id="main" className={`main${plannerOpen ? ' main--planner' : ''}`} tabIndex={-1}>
+        <main id="main" className={`main${plannerOpen && route === 'map' ? ' main--planner' : ''}${route === 'reach' ? ' main--reach' : ''}`} tabIndex={-1}>
           <MapView
             zone={zone}
             zoneSettled={zoneSettled}
@@ -404,7 +429,16 @@ export default function App() {
             pendingReports={pendingReports}
             mission={mission}
             onReportFixed={reportFixed}
+            reach={route === 'reach' ? reach.state.result : null}
+            reachFixed={reach.state.fixed}
+            reachFocus={route === 'reach' ? reachFocus : null}
           />
+
+          {route === 'reach' && (
+            <aside id="panel-reach" className="panel panel--reach" aria-labelledby="reach-title" onKeyDown={onPanelKeyDown(closeReach)}>
+              <ReachPanel reach={reach} lang={lang} onClose={closeReach} headingRef={reachHeadingRef} onShowBarrier={showReachBarrier} />
+            </aside>
+          )}
 
           {pickMode && !plannerOpen && (
             <div className="banner banner--pick" role="status" aria-live="polite">
@@ -430,7 +464,7 @@ export default function App() {
             </div>
           )}
 
-          {!plannerOpen && !pickMode && (
+          {route === 'map' && !plannerOpen && !pickMode && (
             <button type="button" className="fab" onClick={reportBarrier}>
               <span className="fab__glyph" aria-hidden="true">
                 📣
@@ -439,7 +473,7 @@ export default function App() {
             </button>
           )}
 
-          {plannerOpen && (
+          {route === 'map' && plannerOpen && (
             <div className="route-dock" onKeyDown={onPanelKeyDown(togglePlanner)}>
               <aside id="panel-route" className="panel panel--route" aria-labelledby="route-title">
                 <RoutePlanner planner={planner} lang={lang} onClose={togglePlanner} headingRef={plannerHeadingRef} onReport={reportBarrier} />
@@ -469,7 +503,7 @@ export default function App() {
             </aside>
           )}
 
-          {listOpen && (
+          {route === 'map' && listOpen && (
             <aside id="panel-list" className="panel panel--list" aria-labelledby="list-title" onKeyDown={onPanelKeyDown(toggleList)}>
               <BarrierList
                 barriers={barriers}

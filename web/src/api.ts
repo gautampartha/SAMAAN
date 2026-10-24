@@ -1,6 +1,6 @@
 // Typed client for the SAMAAN API. The contract is owned by the Python API;
 // treat the types below as fixed and extend them only when the API changes.
-import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
+import type { Feature, FeatureCollection, LineString, MultiPolygon, Point, Polygon } from 'geojson';
 import type { Lang } from './i18n';
 
 const rawBase = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
@@ -618,5 +618,104 @@ export const missionApi = {
     const res = await fetch(`${API_URL}/missions/recompute`, { method: 'POST', signal, headers: { Accept: 'application/json' } });
     if (!res.ok) throw new ApiError('/missions/recompute', res.status, await readDetail(res));
     return (await res.json()) as MissionsRecompute;
+  },
+};
+
+// ---------- P8 Reach Gap (GET /reach/anchors, GET /reach) ----------
+
+/** The walker is the comparison baseline, so it is not a selectable target profile. */
+export type ReachProfile = Exclude<Profile, 'walker'>;
+export const REACH_PROFILES: readonly ReachProfile[] = ['wheelchair_manual', 'elderly_walking_aid', 'pram'] as const;
+export const REACH_CUTOFFS = [5, 10, 15] as const;
+export type ReachCutoff = (typeof REACH_CUTOFFS)[number];
+
+export interface ReachAnchor {
+  id: number | string;
+  kind: AnchorKind | (string & {});
+  name_en: string;
+  name_hi: string;
+  lat: number;
+  lon: number;
+  verified: boolean;
+}
+
+export interface ReachAnchorsResponse {
+  anchors: ReachAnchor[];
+}
+
+export interface ReachResult {
+  profile: Profile;
+  /** Footpath length reachable within the cutoff (network distance), in km. */
+  reach_km: number;
+  n_edges: number;
+  /** WGS84 hull of the reachable footpaths; null when nothing is reachable. */
+  hull: Polygon | MultiPolygon | null;
+  edge_ids: number[];
+}
+
+export interface ReachFixBarrier {
+  id: number;
+  class: BarrierClassId | (string & {});
+  name_en: string;
+  name_hi: string;
+  severity: Severity;
+  lat: number;
+  lon: number;
+  edge_id: number;
+  permanent: boolean;
+  synthetic: boolean;
+}
+
+export interface ReachFix {
+  rank: number;
+  barrier: ReachFixBarrier;
+  /** Reach gained when this fix is applied after the previous ones. */
+  gain_km: number;
+  cumulative_reach_km: number;
+  cost_lakh_min: number | null;
+  cost_lakh_max: number | null;
+  gain_km_per_lakh: number | null;
+  cost_is_estimate: boolean;
+  cost_source: string;
+}
+
+export interface ReachResponse {
+  anchor: { id: number | string; name_en: string; name_hi: string; lat: number; lon: number };
+  cutoff_min: number;
+  risk: Risk;
+  profile: Profile;
+  synthetic_overlay: boolean;
+  walker: ReachResult;
+  target: ReachResult;
+  gap_km: number;
+  /** target / walker, 0-1; null when the walker reaches nothing. */
+  ratio: number | null;
+  /** Ranked, up to 5. */
+  fixes: ReachFix[];
+  /** The target profile's reach with the `fixed` barriers treated as fixed; null unless `fixed` was sent. */
+  simulated: ReachResult | null;
+  simulated_gap_km: number | null;
+}
+
+export interface ReachParams {
+  anchor: number | string;
+  profile: ReachProfile;
+  cutoff_min: ReachCutoff;
+  risk: Risk;
+  /** Barrier ids to simulate as fixed (omitted when empty). */
+  fixed?: number[];
+}
+
+export const reachApi = {
+  anchors: (signal?: AbortSignal) => getJson<ReachAnchorsResponse>('/reach/anchors', signal),
+  reach: (params: ReachParams, signal?: AbortSignal) => {
+    const q = new URLSearchParams({
+      anchor: String(params.anchor),
+      profile: params.profile,
+      cutoff_min: String(params.cutoff_min),
+      risk: params.risk,
+    });
+    if (params.fixed && params.fixed.length > 0) q.set('fixed', params.fixed.join(','));
+    return getJson<ReachResponse>(`/reach?${q.toString()}`, signal);
   },
 };

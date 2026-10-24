@@ -12,7 +12,7 @@ from sqlmodel import Session, func, select
 
 from api.db import get_session, init_db
 from api.models import Barrier, FootpathEdge, Meta
-from api.routers import images, layers, missions, reports, route, search
+from api.routers import images, layers, missions, reach, reports, route, search
 from api.services.routing import build_context
 from common import config
 from pipeline.graph.osm import load_nx_from_db
@@ -45,6 +45,7 @@ app.include_router(route.router)
 app.include_router(search.router)
 app.include_router(reports.router)
 app.include_router(missions.router)
+app.include_router(reach.router)
 
 
 @app.get("/health")

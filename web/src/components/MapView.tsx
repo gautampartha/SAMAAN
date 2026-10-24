@@ -10,7 +10,7 @@ import maplibregl, {
 } from 'maplibre-gl';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
+import type { Feature, FeatureCollection, Geometry, LineString, MultiPolygon, Point, Polygon, Position } from 'geojson';
 import {
   imagePhotoUrl,
   localizedName,
@@ -27,6 +27,7 @@ import {
   type LayerData,
   type LayerKey,
   type MissionFeature,
+  type ReachResponse,
   type ReportItem,
   type ReportTarget,
   type RouteMode,
@@ -36,10 +37,20 @@ import {
 import type { Lang } from '../i18n';
 import type { PlannerPoint, PointRole } from '../routePlanner';
 import { ROUTE_ENDPOINT_COLOURS, ROUTE_STYLES, UNKNOWN_OVERLAY_COLOUR } from './routeStyles';
+import { REACH_ANCHOR_COLOUR, REACH_FIX_COLOUR, REACH_FIX_DONE_COLOUR, REACH_STYLES } from './reachStyles';
 
 export interface BarrierSelection {
   feature: BarrierFeature;
   /** Changes on every selection so re-selecting the same barrier re-flies. */
+  nonce: number;
+}
+
+/** "Show" pressed on a Reach Gap fix row: fly to this barrier (and open its popup when it is on the map). */
+export interface ReachFocus {
+  barrierId: number;
+  lat: number;
+  lon: number;
+  /** Changes on every press so re-showing the same barrier re-flies. */
   nonce: number;
 }
 
@@ -66,6 +77,11 @@ interface MapViewProps {
   mission: MissionFeature | null;
   /** "Report as fixed" pressed in a barrier popup. */
   onReportFixed: (target: ReportTarget) => void;
+  /** Reach Gap page: walker / target / simulated hulls, the anchor and the ranked fixes. null = page not shown. */
+  reach: ReachResponse | null;
+  /** Barrier ids currently simulated as fixed (their pins turn green). */
+  reachFixed: number[];
+  reachFocus: ReachFocus | null;
 }
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -88,8 +104,22 @@ const LAYER_IDS: Record<LayerKey, string[]> = {
 /** Point layers that open popups; a coverage click is ignored when one of these is hit too. */
 const POINT_CLICK_LAYERS = ['barriers', 'anchors', 'demo-endpoints', 'images', 'pending-reports'];
 
-// Route planner / citizen-loop sources (not user-toggleable; driven by app state).
-const ROUTE_SOURCES = ['routes', 'route-endpoints', 'route-unknown', 'route-barriers', 'pending-reports', 'missions'] as const;
+// Route planner / citizen-loop / reach-gap sources (not user-toggleable; driven by app state).
+const ROUTE_SOURCES = [
+  'routes',
+  'route-endpoints',
+  'route-unknown',
+  'route-barriers',
+  'pending-reports',
+  'missions',
+  'reach-walker',
+  'reach-target',
+  'reach-simulated',
+  'reach-anchor',
+  'reach-fixes',
+] as const;
+const STAR_IMAGE = 'samaan-anchor-star';
+const SIM_GROW_MS = 600;
 export const PENDING_REPORT_COLOUR = '#0b5fa5';
 export const MISSION_COLOUR = '#424242';
 const ROUTE_LINE_LAYERS: Record<RouteMode, string[]> = {
@@ -128,6 +158,38 @@ function headingArrowImage(): ImageData | null {
   return ctx.getImageData(0, 0, size * 2, size * 2);
 }
 
+/** Five-point star with a white edge for the reach anchor, drawn on a canvas (no glyph dependency). */
+function starImage(): ImageData | null {
+  const size = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = size * 2;
+  canvas.height = size * 2;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.scale(2, 2);
+  const cx = size / 2;
+  const cy = size / 2;
+  const outer = size / 2 - 2;
+  const inner = outer * 0.45;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = REACH_ANCHOR_COLOUR;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.fill();
+  return ctx.getImageData(0, 0, size * 2, size * 2);
+}
+
 function nameProp(lang: Lang): 'name_hi' | 'name_en' {
   return lang === 'hi' ? 'name_hi' : 'name_en';
 }
@@ -157,6 +219,15 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     paint: { 'line-color': '#1565c0', 'line-width': 10, 'line-opacity': 0.35 },
   });
 
+  // --- Reach Gap blobs (fills below the footpaths so the network stays readable) ---
+  const rw = REACH_STYLES.walker;
+  const rt = REACH_STYLES.target;
+  const rs = REACH_STYLES.simulated;
+  add({ id: 'reach-walker-fill', type: 'fill', source: 'reach-walker', paint: { 'fill-color': rw.fill, 'fill-opacity': rw.fillOpacity } });
+  add({ id: 'reach-target-fill', type: 'fill', source: 'reach-target', paint: { 'fill-color': rt.fill, 'fill-opacity': rt.fillOpacity } });
+  // Simulated blob above the target blob; its opacity grows from 0 when a simulation arrives.
+  add({ id: 'reach-simulated-fill', type: 'fill', source: 'reach-simulated', paint: { 'fill-color': rs.fill, 'fill-opacity': rs.fillOpacity } });
+
   // --- Footpaths: colour AND pattern/width differ per state ---
   add({
     id: 'footpaths-unknown',
@@ -181,6 +252,29 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     filter: ['==', ['get', 'state'], 'blocked'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#c62828', 'line-width': 6, 'line-dasharray': [0.1, 1.8] },
+  });
+
+  // --- Reach Gap outlines: solid (walker) / dashed (target) / dotted (simulated), above the footpaths ---
+  add({
+    id: 'reach-walker-line',
+    type: 'line',
+    source: 'reach-walker',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': rw.line, 'line-width': rw.lineWidth },
+  });
+  add({
+    id: 'reach-target-line',
+    type: 'line',
+    source: 'reach-target',
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': rt.line, 'line-width': rt.lineWidth, 'line-dasharray': rt.dash },
+  });
+  add({
+    id: 'reach-simulated-line',
+    type: 'line',
+    source: 'reach-simulated',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': rs.line, 'line-width': rs.lineWidth, 'line-dasharray': rs.dash },
   });
 
   // --- Highlighted mission: thick dashed grey line with a white casing and the street name along it ---
@@ -496,6 +590,132 @@ function addRouteTopLayers(map: MapLibreMap): void {
       paint: { 'text-color': '#ffffff' },
     });
   }
+
+  // --- Reach Gap: numbered pins for the ranked fixes (green once simulated) and the anchor star ---
+  add({
+    id: 'reach-fixes',
+    type: 'circle',
+    source: 'reach-fixes',
+    paint: {
+      'circle-radius': 12,
+      'circle-color': ['case', ['get', 'fixed'], REACH_FIX_DONE_COLOUR, REACH_FIX_COLOUR],
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 3,
+    },
+  });
+  if (hasGlyphs) {
+    add({
+      id: 'reach-fixes-label',
+      type: 'symbol',
+      source: 'reach-fixes',
+      layout: {
+        'text-field': ['to-string', ['get', 'rank']],
+        'text-font': TEXT_FONT,
+        'text-size': 13,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': '#ffffff' },
+    });
+  }
+  if (!map.hasImage(STAR_IMAGE)) {
+    const img = starImage();
+    if (img) map.addImage(STAR_IMAGE, img, { pixelRatio: 2 });
+  }
+  if (map.hasImage(STAR_IMAGE)) {
+    add({
+      id: 'reach-anchor',
+      type: 'symbol',
+      source: 'reach-anchor',
+      layout: { 'icon-image': STAR_IMAGE, 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+    });
+  } else {
+    add({
+      id: 'reach-anchor',
+      type: 'circle',
+      source: 'reach-anchor',
+      paint: { 'circle-radius': 12, 'circle-color': REACH_ANCHOR_COLOUR, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 },
+    });
+  }
+  if (hasGlyphs) {
+    add({
+      id: 'reach-anchor-label',
+      type: 'symbol',
+      source: 'reach-anchor',
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': TEXT_FONT,
+        'text-size': 13,
+        'text-offset': [0, 1.5],
+        'text-anchor': 'top',
+        'text-allow-overlap': true,
+      },
+      paint: { 'text-color': REACH_ANCHOR_COLOUR, 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+    });
+  }
+}
+
+// ---------- Reach Gap helpers ----------
+
+function hullToFC(hull: Polygon | MultiPolygon | null | undefined): FeatureCollection {
+  return { type: 'FeatureCollection', features: hull ? [{ type: 'Feature', geometry: hull, properties: {} }] : [] };
+}
+
+function reachAnchorToFC(reach: ReachResponse | null, lang: Lang, anchorWord: string): FeatureCollection<Point> {
+  if (!reach) return { type: 'FeatureCollection', features: [] };
+  const a = reach.anchor;
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
+        properties: { label: `${anchorWord}: ${localizedName(a, lang)}` },
+      },
+    ],
+  };
+}
+
+function reachFixesToFC(reach: ReachResponse | null, fixed: number[]): FeatureCollection<Point> {
+  return {
+    type: 'FeatureCollection',
+    features: (reach?.fixes ?? []).map((f) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [f.barrier.lon, f.barrier.lat] },
+      properties: { id: f.barrier.id, rank: f.rank, fixed: fixed.includes(f.barrier.id) },
+    })),
+  };
+}
+
+/** Bounding box of any GeoJSON geometry (walks nested coordinate arrays). */
+function boundsOfGeometry(geom: Geometry | null | undefined): [[number, number], [number, number]] | null {
+  if (!geom) return null;
+  let w = Infinity;
+  let s = Infinity;
+  let e = -Infinity;
+  let n = -Infinity;
+  const visit = (c: unknown) => {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === 'number') {
+      const [x, y] = c as Position;
+      if (x < w) w = x;
+      if (x > e) e = x;
+      if (y < s) s = y;
+      if (y > n) n = y;
+      return;
+    }
+    for (const sub of c) visit(sub);
+  };
+  if ('coordinates' in geom) visit(geom.coordinates);
+  else for (const g of geom.geometries) visit(boundsOfGeometry(g));
+  return Number.isFinite(w) ? [[w, s], [e, n]] : null;
+}
+
+/** Padding that keeps the fitted feature clear of the side panel / bottom sheet. */
+function panelPadding(map: MapLibreMap, desktopLeft: number): { top: number; left: number; right: number; bottom: number } {
+  const narrow = window.matchMedia('(max-width: 767px)').matches;
+  const h = map.getContainer().clientHeight;
+  return narrow ? { top: 32, left: 24, right: 24, bottom: Math.round(h * 0.6) + 16 } : { top: 40, left: desktopLeft, right: 40, bottom: 48 };
 }
 
 function routesToFC(routes: RouteResponse | null): FeatureCollection<LineString, { mode: RouteMode }> {
@@ -803,6 +1023,9 @@ export default function MapView({
   pendingReports,
   mission,
   onReportFixed,
+  reach,
+  reachFixed,
+  reachFocus,
 }: MapViewProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1064,6 +1287,86 @@ export default function MapView({
     if (b) map.fitBounds(b, { padding: 60, duration: prefersReducedMotion() ? 0 : 700, maxZoom: 17.5 });
   }, [mission, ready]);
 
+  // Reach Gap: the three hulls, the anchor star and the ranked fix pins.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    (map.getSource('reach-walker') as GeoJSONSource | undefined)?.setData(hullToFC(reach?.walker.hull));
+    (map.getSource('reach-target') as GeoJSONSource | undefined)?.setData(hullToFC(reach?.target.hull));
+    (map.getSource('reach-simulated') as GeoJSONSource | undefined)?.setData(hullToFC(reach?.simulated?.hull));
+    (map.getSource('reach-anchor') as GeoJSONSource | undefined)?.setData(reachAnchorToFC(reach, lang, t('reach.anchorPin')));
+  }, [reach, lang, t, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    (map.getSource('reach-fixes') as GeoJSONSource | undefined)?.setData(reachFixesToFC(reach, reachFixed));
+  }, [reach, reachFixed, ready]);
+
+  // Fit the map to the walker hull when a (new) result arrives. Simulations keep the same walker hull,
+  // so toggling a fix does not move the map the user may have panned.
+  const reachBoundsKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (!reach) {
+      reachBoundsKeyRef.current = null;
+      return;
+    }
+    const b = boundsOfGeometry(reach.walker.hull) ?? boundsOfGeometry(reach.target.hull);
+    const key = b ? `${reach.anchor.id}|${b.flat().join(',')}` : `${reach.anchor.id}|anchor`;
+    if (key === reachBoundsKeyRef.current) return;
+    reachBoundsKeyRef.current = key;
+    const duration = prefersReducedMotion() ? 0 : 700;
+    if (b) map.fitBounds(b, { padding: panelPadding(map, 480), duration, maxZoom: 17 });
+    else map.flyTo({ center: [reach.anchor.lon, reach.anchor.lat], zoom: 16, duration, padding: panelPadding(map, 480), essential: true });
+  }, [reach, ready]);
+
+  // Grow the simulated blob in (fill-opacity 0 -> target over ~600 ms); instant under reduced motion.
+  const simHull = reach?.simulated?.hull ?? null;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !map.getLayer('reach-simulated-fill')) return;
+    const target = REACH_STYLES.simulated.fillOpacity;
+    if (!simHull || prefersReducedMotion()) {
+      map.setPaintProperty('reach-simulated-fill', 'fill-opacity', target);
+      map.setPaintProperty('reach-simulated-line', 'line-opacity', 1);
+      return;
+    }
+    map.setPaintProperty('reach-simulated-fill', 'fill-opacity', 0);
+    map.setPaintProperty('reach-simulated-line', 'line-opacity', 0);
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / SIM_GROW_MS);
+      const eased = 1 - (1 - p) * (1 - p);
+      if (map.getLayer('reach-simulated-fill')) {
+        map.setPaintProperty('reach-simulated-fill', 'fill-opacity', target * eased);
+        map.setPaintProperty('reach-simulated-line', 'line-opacity', eased);
+      }
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [simHull, ready]);
+
+  // "Show" on a fix row: fly to the barrier and open its popup when the barriers layer knows it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !reachFocus) return;
+    const target: [number, number] = [reachFocus.lon, reachFocus.lat];
+    map.flyTo({
+      center: target,
+      zoom: Math.max(map.getZoom(), 17),
+      duration: prefersReducedMotion() ? 0 : 900,
+      padding: panelPadding(map, 480),
+      essential: true,
+    });
+    const feature = data.barriers?.features.find((f) => f.properties.id === reachFocus.barrierId);
+    if (feature) openPopup(map, target, barrierPopupContent(feature.properties, langRef.current, tRef.current, popupActions()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reachFocus, ready]);
+
   // Pulse the barrier rings (static when the user prefers reduced motion).
   useEffect(() => {
     const map = mapRef.current;
@@ -1106,6 +1409,7 @@ export default function MapView({
     if (!map || !ready) return;
     if (map.getLayer('anchors-label')) map.setLayoutProperty('anchors-label', 'text-field', ['get', nameProp(lang)]);
     if (map.getLayer('missions-label')) map.setLayoutProperty('missions-label', 'text-field', ['get', nameProp(lang)]);
+    // (The reach anchor label is rebuilt from `lang` by its own data effect.)
     popupRef.current?.remove();
     popupRef.current = null;
   }, [lang, ready]);

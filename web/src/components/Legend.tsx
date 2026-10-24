@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { LAYER_KEYS, type LayerKey } from '../api';
 import { IMAGE_COLOURS } from './MapView';
 import { BarrierRingSwatch, ROUTE_ENDPOINT_COLOURS, RouteSwatch, UnknownOverlaySwatch } from './routeStyles';
+import { ReachAnchorSwatch, ReachBlobSwatch, ReachFixSwatch } from './reachStyles';
 
 interface LegendProps {
   visible: Record<LayerKey, boolean>;
@@ -129,6 +130,30 @@ export default function Legend({ visible, onToggle, onClose, headingRef }: Legen
         <div className="legend__row">
           <dt><EndpointSwatch colour={ROUTE_ENDPOINT_COLOURS.destination} label="B" /> {t('route.destination')}</dt>
           <dd>{t('legend.demoDestination')}</dd>
+        </div>
+      </dl>
+
+      <h3 className="panel__subtitle">{t('legend.reachTitle')}</h3>
+      <dl className="legend">
+        <div className="legend__row">
+          <dt><ReachBlobSwatch blob="walker" /> {t('reach.blob.walker')}</dt>
+          <dd>{t('legend.reachWalker')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><ReachBlobSwatch blob="target" /> {t('reach.blob.target')}</dt>
+          <dd>{t('legend.reachTarget')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><ReachBlobSwatch blob="simulated" /> {t('reach.blob.simulated')}</dt>
+          <dd>{t('legend.reachSimulated')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><ReachAnchorSwatch /> {t('reach.anchorPin')}</dt>
+          <dd>{t('legend.reachAnchor')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><ReachFixSwatch /> {t('reach.fixesTitle')}</dt>
+          <dd>{t('legend.reachFix')}</dd>
         </div>
       </dl>
 

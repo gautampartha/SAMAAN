@@ -62,7 +62,13 @@
     "routeUnknown": "Grey striped overlay: an unchecked stretch of the selected route",
     "routeBarrier": "Red ring: a barrier on the selected route; the ring pulses unless reduced motion is on",
     "pendingReport": "Pending report: hollow blue circle with a question mark, not yet validated",
-    "mission": "Mission: thick dashed grey line labelled with the street name"
+    "mission": "Mission: thick dashed grey line labelled with the street name",
+    "reachTitle": "Reach from anchor",
+    "reachWalker": "Light blue blob with a solid dark-blue outline: footpaths a walker reaches within the time budget",
+    "reachTarget": "Purple blob with a dashed outline: footpaths the chosen profile reaches",
+    "reachSimulated": "Green blob with a dotted outline, drawn on top: the chosen profile's reach once the ticked fixes are applied",
+    "reachAnchor": "Dark blue star with a white edge and the place name: the start point of the reach",
+    "reachFix": "Numbered purple pin with a white ring: a barrier from the to-do list; it turns green while its fix is simulated"
   },
   "severity": {
     "label": "Severity",
@@ -141,7 +147,8 @@
     "map": "Map",
     "capture": "Capture",
     "validate": "Validate",
-    "missions": "Missions"
+    "missions": "Missions",
+    "reach": "Reach Gap"
   },
   "images": {
     "source": {
@@ -519,5 +526,71 @@
     "onMap": "Mission {{rank}}: {{name}}",
     "clearMap": "Hide mission",
     "walkHint": "Opens the capture page with session id mission-{{id}}."
+  },
+  "reach": {
+    "title": "Reach Gap",
+    "intro": "How much footpath can someone reach from a metro station, bus stop, hospital or school in a few minutes? Compare a walker with a wheelchair user, an elderly person or a pram, then simulate fixing the worst barriers.",
+    "anchor": "Start from",
+    "anchorPin": "Anchor",
+    "loadingAnchors": "Loading places…",
+    "noAnchors": "No places available",
+    "profileLabel": "Compare the walker with",
+    "walkerBaseline": "The walker is always the baseline, so it cannot be chosen here.",
+    "cutoff": "Time budget",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "km": "km",
+    "headlineTitle": "Reach gap headline",
+    "headline": {
+      "walker": "Walker reaches",
+      "target": "{{profile}} reaches",
+      "gap": "Reach Gap",
+      "simulated": "With these fixes",
+      "simulatedGap": "(gap {{gap}} km)"
+    },
+    "person": {
+      "wheelchair_manual": "Wheelchair user",
+      "elderly_walking_aid": "Elderly person with a walking aid",
+      "pram": "Person pushing a pram"
+    },
+    "ratio": {
+      "wheelchair_manual": "A wheelchair user reaches {{pct}}% of what a walker reaches.",
+      "elderly_walking_aid": "An elderly person with a walking aid reaches {{pct}}% of what a walker reaches.",
+      "pram": "Someone pushing a pram reaches {{pct}}% of what a walker reaches."
+    },
+    "ratioNone": "The walker reaches no footpath from here within this time, so no ratio can be computed.",
+    "measure": "Measured as the length of footpath reachable within {{min}} minutes along the network from the start point (kilometres of footpath, not an area).",
+    "loading": "Computing reach…",
+    "empty": "Choose a start point to compute the reach.",
+    "live": "Walker {{walker}} km, {{profile}} {{target}} km, gap {{gap}} km.",
+    "liveSim": "With the simulated fixes: {{km}} km, gap {{gap}} km.",
+    "fixesTitle": "The city's to-do list",
+    "fixesHint": "The five barriers whose removal would add the most reach for {{profile}}, in order. Tick one to see the map and the headline change.",
+    "noFixes": "No barrier limits this reach; the gap comes from the footpath network itself.",
+    "rank": "Fix {{rank}}",
+    "gainSr": "Gains {{gain}} km of reach; {{total}} km in total after this fix.",
+    "costRange": "₹{{min}}–{{max}} lakh",
+    "costSingle": "₹{{v}} lakh",
+    "costEstimate": " (estimate)",
+    "costNone": "Cost: not estimated yet",
+    "costSource": "Source: {{source}}",
+    "gainPerLakh": "{{v}} km per lakh",
+    "simulateFix": "Simulate fixing: {{name}}",
+    "simulateAll": "Simulate all {{count}}",
+    "clearSim": "Clear simulation",
+    "show": "Show",
+    "showBarrier": "Show {{name}} on the map",
+    "syntheticHint": "Numbers come from seeded demo data until real detections exist.",
+    "blob": {
+      "walker": "Walker's reach",
+      "target": "Reach of the chosen profile",
+      "simulated": "Reach with the simulated fixes"
+    },
+    "errors": {
+      "anchors": "Could not load the start points. The SAMAAN API is unreachable or returned an error.",
+      "notFound": "This start point is unknown to the API. Choose another one.",
+      "badParams": "The reach request was invalid. Check the profile, time budget and risk.",
+      "generic": "Could not compute the reach. The SAMAAN API is unreachable or returned an error."
+    }
   }
 }

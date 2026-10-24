@@ -724,5 +724,87 @@ Web: Report sheet, Validate page, Missions page, user dialog, live refresh after
 
 ---
 
-## Phase P8 — Reach Gap
+## Phase P8 — Reach Gap (2026-10-24) — done
+
+### Plan
+Plan 6.7: single-source Dijkstra from an anchor with a time cutoff (default 10 min) using the
+P5 cost model (walker baseline in naive mode, target profile in `samaan` mode with the chosen
+risk); metric = total reachable footpath length in km counting partial edges; concave hull of
+the reached edges for display; Reach Gap = walker − target, plus ratio; greedy fix ranking over
+active barriers inside the walker's reach (apply the best, recompute, repeat up to 5) with cost
+ranges from `config/fix_costs.yaml` labelled estimate and "reach gained per ₹ lakh" when a cost
+exists; `GET /reach` with a `fixed=` simulation parameter; `GET /reach/anchors`. Web: Reach Gap
+page with the headline, two blobs, top-5 fixes and simulate-fix animation. Tests on toy graphs.
+
+### What was built (backend)
+- `api/services/reach.py`: `reach()` = Dijkstra with cutoff on the P5 cost model, partial edges
+  counted by the fraction that fits in the remaining time, result = reachable footpath length;
+  concave hull (`shapely.concave_hull`, ratio 0.35, 3 m buffer) of the reached edge points in
+  WGS84 for the blob; `fix_candidates()` = active barriers on edges inside the walker's reach
+  that cost the target profile something; `rank_fixes()` = greedy up to 5 (apply best, recompute,
+  repeat) with cost ranges from `config/fix_costs.yaml` and "km gained per ₹ lakh" when a cost
+  exists (all costs are still `TODO: estimate`, so that column is null); `reach_gap()` bundles
+  walker (naive mode, no unknown penalty) vs target profile (samaan mode, chosen risk), gap, ratio,
+  fixes and an optional `fixed=` simulation.
+- `GET /reach?anchor&profile&cutoff_min&risk&fixed=ids` and `GET /reach/anchors`.
+- Tests (110 passing): partial-edge arithmetic with known answers, blocked graph → zero reach,
+  greedy order and cumulative totals, simulation restores the walker's reach, candidates only
+  inside walker reach and only costly ones, hull validity, API contract and error codes.
+
+### Illustrative numbers (real graph, SEEDED overlay, 10 min, balanced risk — not an evaluation)
+| anchor | walker | wheelchair | gap | ratio | top fix gain |
+|---|---|---|---|---|---|
+| Karkarduma metro | 47.0 km | 16.3 km | 30.7 km | 0.35 | +0.24 km (steps, sev 4) |
+| hospital (OSM) | 36.6 km | 14.5 km | 22.0 km | 0.40 | +0.16 km (open drain, sev 5) |
+Response time ≈ 0.5–0.9 s per anchor including the ranking. Honest reading: with the seed, the
+gap is driven mostly by the slower profile speed and the unknown-footpath multiplier, not by the
+33 seeded barriers, so each fix gains little. Real coverage and real detections will change both
+the gap and the ranking; `eval/reach_eval.py` (P10) will record the real numbers.
+
+### What was built (web)
+- `#/reach` page ("Reach Gap" in the nav): anchor select (from `/reach/anchors`), profile radios
+  (wheelchair, elderly with walking aid, pram; the walker is the fixed baseline), 5/10/15-minute
+  time budget, risk radios; **headline** tiles in large type ("Walker reaches X km · Wheelchair
+  user reaches Y km · Reach Gap Z km (ratio %)") with a one-sentence explanation of the measure
+  and a screen-reader live summary; **two blobs** on the map (walker light blue solid outline,
+  target purple dashed) plus the anchor star and numbered fix pins; **the city's to-do list**
+  (rank, name, severity word, +gain and cumulative, cost range or "not estimated yet", gain per
+  lakh, Show flies to the pin) with a **"Simulate fixing: …" checkbox** per row, "Simulate all" /
+  "Clear"; simulated reach drawn as a green dotted blob with a 600 ms grow animation (off under
+  reduced motion), headline gains "With these fixes: … km (gap … km)". Synthetic badge and hint.
+  Focus management, Escape, 48 px targets, high-contrast tokens for the blobs, en/hi strings.
+- Fixed during live verification: the anchors request had an "already sent" guard that React
+  StrictMode's double effect run turned into a permanent "Loading places…" (the first request is
+  aborted on the simulated unmount); the guard was removed. Also fixed by the agent: the desktop
+  nav grid collapsing to one column with five links.
+- Verified live against the API: headline "A wheelchair user reaches 35 % of what a walker
+  reaches", blobs, star, pins, five fix rows, simulate-fix line. No new console errors.
+
+### Decisions taken alone
+- Walker baseline uses `naive_accessible` mode (no unknown penalty): "what a map shows a
+  walker"; the target profile uses `samaan` mode with the chosen risk, so the gap includes the
+  honesty penalty for unseen footpaths. Both are stated in the UI's explanation sentence.
+- Reach counts partial edges by remaining time; the hull is only a display aid (plan: length, not
+  area, is the metric).
+- Fix candidates are capped at the 60 most severe inside the walker's reach to bound the greedy
+  search (each round is one Dijkstra per candidate).
+
+### Open issues
+- Gains below 50 m show as "+0.0 km" at one decimal; show metres below 1 km (web polish, P10).
+- With the seed, the five fixes add only ~0.5 km in total; the honest pitch line is the ratio and
+  the gap, and the fix list becomes meaningful with real barriers.
+- `fix_costs.yaml` is all `TODO: estimate`, so "gain per ₹ lakh" is empty everywhere.
+
+### Human tasks (P8)
+22. **Rough fix-cost ranges** (30 min): fill `config/fix_costs.yaml` `min`/`max` in ₹ lakh per
+    class with a `source` note (CPWD/PWD schedule of rates, a contractor's quote, or "team
+    estimate"). The UI labels every figure "(estimate)".
+23. **Pick the demo anchor and cutoff** (5 min): run the Reach Gap page for the metro at 5/10/15
+    minutes and note which cutoff gives the clearest story; put it in `docs/demo_script.md`.
+24. **Review Hindi strings** (10 min) in `web/src/i18n/hi.json` `reach.*`: "पहुँच अंतर",
+    "प्रैम चलाने वाले", "शहर की करने-योग्य सूची", "एंकर".
+
+---
+
+## Phase P9 — Wheels as sensors
 _Not started. Waiting for "go"._

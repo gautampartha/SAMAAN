@@ -588,11 +588,11 @@ body {
 .nav__link:hover {
   border-color: var(--accent);
 }
-/* Four pages must fit on one row at 360-375 px: equal columns, tighter padding. */
+/* Five pages at 360-375 px: equal columns that wrap to 3 + 2 (never narrower than 96 px), tighter padding. */
 @media (max-width: 479px) {
   .nav {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: 6px;
   }
   .nav__link {
@@ -621,10 +621,11 @@ body {
   }
   .nav {
     margin-top: 4px;
-    /* Four links: one row when there is room, otherwise an even 2 x 2 instead of 3 + 1. */
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(104px, max-content));
-    justify-content: start;
+    /* Five links at their natural width: one row when there is room, wrapping otherwise.
+       (auto-fit grid columns collapse to one column inside the flex header, whose width is indefinite.) */
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
   }
 }
 
@@ -1970,4 +1971,348 @@ body {
   background: color-mix(in srgb, #1b7f3b 16%, var(--panel));
   color: var(--fg);
   text-decoration: line-through;
+}
+
+/* ====================================================================
+   P8 Reach Gap: side panel / bottom sheet, headline tiles, to-do list
+   ==================================================================== */
+
+/* Blob colours for the legend swatches (the map uses the fixed colours in reachStyles.tsx). */
+:root {
+  --reach-walker-fill: rgba(100, 181, 246, 0.4);
+  --reach-walker-line: #0d47a1;
+  --reach-target-fill: rgba(126, 87, 194, 0.45);
+  --reach-target-line: #4527a0;
+  --reach-sim-fill: rgba(67, 160, 71, 0.45);
+  --reach-sim-line: #1b5e20;
+  --reach-anchor: #1a237e;
+  --reach-fix: #311b92;
+  --reach-fix-done: #1b5e20;
+  --reach-pin-fg: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="high-contrast"]) {
+    --reach-walker-line: #1565c0;
+    --reach-target-line: #5e35b1;
+    --reach-sim-line: #2e7d32;
+  }
+}
+/* High contrast: black outlines whose pattern (solid / dashed / dotted) and grey level differ; green becomes a white pin with a dark number. */
+:root[data-theme="high-contrast"] {
+  --reach-walker-fill: transparent;
+  --reach-walker-line: #000000;
+  --reach-target-fill: rgba(0, 0, 0, 0.3);
+  --reach-target-line: #000000;
+  --reach-sim-fill: rgba(0, 0, 0, 0.65);
+  --reach-sim-line: #000000;
+  --reach-anchor: #000000;
+  --reach-fix: #000000;
+  --reach-fix-done: #ffffff;
+  --reach-pin-fg: #ffffff;
+}
+@media (prefers-contrast: more) {
+  :root:not([data-theme="normal"]) {
+    --reach-walker-fill: transparent;
+    --reach-walker-line: #000000;
+    --reach-target-fill: rgba(0, 0, 0, 0.3);
+    --reach-target-line: #000000;
+    --reach-sim-fill: rgba(0, 0, 0, 0.65);
+    --reach-sim-line: #000000;
+    --reach-anchor: #000000;
+    --reach-fix: #000000;
+    --reach-fix-done: #ffffff;
+    --reach-pin-fg: #ffffff;
+  }
+}
+.rswatch--walker rect {
+  fill: var(--reach-walker-fill);
+  stroke: var(--reach-walker-line);
+}
+.rswatch--target rect {
+  fill: var(--reach-target-fill);
+  stroke: var(--reach-target-line);
+}
+.rswatch--simulated rect {
+  fill: var(--reach-sim-fill);
+  stroke: var(--reach-sim-line);
+}
+.rswatch--anchor path {
+  fill: var(--reach-anchor);
+  stroke: #ffffff;
+}
+.rswatch--fix circle {
+  fill: var(--reach-fix);
+  stroke: #ffffff;
+}
+.rswatch--fix text {
+  fill: var(--reach-pin-fg);
+}
+.rswatch--fix .rswatch__done {
+  fill: var(--reach-fix-done);
+}
+:root[data-theme="high-contrast"] .rswatch--fix .rswatch__done {
+  stroke: #000000;
+}
+:root[data-theme="high-contrast"] .rswatch--fix .rswatch__doneText {
+  fill: #000000;
+}
+@media (prefers-contrast: more) {
+  :root:not([data-theme="normal"]) .rswatch--fix .rswatch__done {
+    stroke: #000000;
+  }
+  :root:not([data-theme="normal"]) .rswatch--fix .rswatch__doneText {
+    fill: #000000;
+  }
+}
+
+/* The page panel: bottom sheet on phones (60 % like the planner), left column on wider screens. */
+.panel--reach {
+  max-height: 60%;
+}
+@media (min-width: 768px) {
+  .panel--reach {
+    left: 12px;
+    top: 12px;
+    bottom: 12px;
+    width: min(440px, 46vw);
+    max-height: none;
+  }
+  .main--reach .panel--legend {
+    max-height: calc(100% - 60px);
+  }
+}
+.reachp {
+  display: grid;
+  gap: 10px;
+}
+.reachp .panel__hint {
+  margin: 0;
+}
+.reachp__select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 12px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+}
+.reachp__synthetic {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.reachp__inline {
+  display: grid;
+  gap: 6px;
+}
+
+/* Profile radios in one row (three tiles); the whole tile is the target. */
+.choices--row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.choices--row .choice {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  gap: 2px;
+  padding: 6px 4px;
+  min-height: 72px;
+}
+.choices--row .choice__text {
+  font-size: 0.85rem;
+  line-height: 1.15;
+}
+
+/* Cutoff: segmented buttons, pressed state = colour + underline (shared .btn rule). */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.segmented__btn {
+  border-radius: 0;
+  margin-left: -2px;
+}
+.segmented__btn:first-child {
+  border-radius: 10px 0 0 10px;
+  margin-left: 0;
+}
+.segmented__btn:last-child {
+  border-radius: 0 10px 10px 0;
+}
+.segmented__btn[aria-pressed="true"] {
+  position: relative;
+  z-index: 1;
+}
+
+/* Headline: the pitch number. Numbers >= 32 px on phones, 40 px from 768 px up. */
+.headline {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.headline__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.stat {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-left: 6px solid var(--border);
+  min-width: 0;
+}
+.stat__who {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.stat__num {
+  font-size: 2rem;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.stat__pct {
+  font-size: 0.6em;
+  font-weight: 700;
+  color: var(--muted);
+}
+@media (min-width: 768px) {
+  .stat__num {
+    font-size: 2.5rem;
+  }
+}
+/* Tile border patterns match the blob outlines in the legend (solid / dashed / dotted). */
+.stat--walker {
+  border-left-style: solid;
+  border-left-color: var(--reach-walker-line);
+}
+.stat--target {
+  border-left-style: dashed;
+  border-left-color: var(--reach-target-line);
+}
+.stat--gap {
+  border-left-style: double;
+  border-left-width: 8px;
+  border-left-color: var(--fg);
+}
+.stat--sim {
+  border-left-style: dotted;
+  border-left-color: var(--reach-sim-line);
+  background: color-mix(in srgb, var(--reach-sim-line) 10%, var(--panel));
+}
+:root[data-theme="high-contrast"] .stat--sim {
+  background: var(--panel);
+}
+.headline__sentence {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.headline__measure,
+.headline__placeholder {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.headline__placeholder {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 12px 0;
+}
+
+/* To-do list */
+.fixes {
+  display: grid;
+  gap: 8px;
+}
+.fixes .panel__subtitle {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.fixlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.fix {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+/* Simulated: dotted green border (pattern + colour) and a tint, like the simulated blob. */
+.fix--on {
+  border-style: dotted;
+  border-color: var(--reach-sim-line);
+  background: color-mix(in srgb, var(--reach-sim-line) 10%, var(--panel));
+}
+:root[data-theme="high-contrast"] .fix--on {
+  background: var(--panel);
+  border-width: 3px;
+}
+.fix__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.fix__name {
+  font-weight: 700;
+}
+.fix__sev {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.fix__gain {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.fix__plus {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+.fix__cum {
+  color: var(--muted);
+  font-weight: 600;
+}
+.fix__cost {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.fix__source {
+  overflow-wrap: anywhere;
+}
+.fix__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.fix__sim {
+  flex: 1 1 200px;
+  border: 1px solid var(--border);
+  font-weight: 600;
 }

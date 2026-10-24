@@ -1,4 +1,4 @@
-# SAMAAN web (P0 scaffold + P2 capture + P3 route planner + P7 citizen loop)
+# SAMAAN web (P0 scaffold + P2 capture + P3 route planner + P7 citizen loop + P8 reach gap)
 
 Vite + React 18 + TypeScript single-page PWA that renders the SAMAAN API's
 GeoJSON layers on a MapLibre GL JS map, in English and Hindi, with
@@ -24,7 +24,7 @@ empty map.
 
 | Variable       | Default                  | Purpose                                                        |
 | -------------- | ------------------------ | -------------------------------------------------------------- |
-| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route`, `GET /search`, the citizen loop (`/users`, `/reports`, `/reports/{id}/votes`, `/missions`) (barrier `photo_urls` and report `photo_url` are relative to it) |
+| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route`, `GET /search`, the citizen loop (`/users`, `/reports`, `/reports/{id}/votes`, `/missions`), the reach gap (`GET /reach/anchors`, `GET /reach`) (barrier `photo_urls` and report `photo_url` are relative to it) |
 
 ## Pages
 
@@ -34,9 +34,13 @@ The app is a single page with a hash router (`src/router.ts`, no library):
 - `#/capture` - the photo-walk capture page.
 - `#/validate` - validate pending citizen reports, one card at a time.
 - `#/missions` - the top-10 footpath stretches that most need a photo walk.
+- `#/reach` - the **Reach Gap**: how far a walker vs. a wheelchair user (or
+  elderly person / pram) gets from a metro station in N minutes, and which
+  five fixes close the gap. Uses the main map (it stays mounted) with a side
+  panel / bottom sheet like the planner.
 
-The header carries a Map / Capture / Validate / Missions navigation with
-`aria-current="page"`.
+The header carries a Map / Capture / Validate / Missions / Reach Gap
+navigation with `aria-current="page"` (five links wrap to 3 + 2 on phones).
 
 ## Route planner and three-route comparison (`#/`)
 
@@ -226,6 +230,77 @@ map page from another page.
   opener), **Tab** cycles inside the dialog, arrow keys move within the class
   and severity tile groups.
 
+## Reach Gap (`#/reach`, P8)
+
+The headline number of the pitch: *"From Karkarduma metro, a walker reaches
+X km of footpath in 10 minutes. A wheelchair user reaches Y. Fixing these 3
+barriers doubles that."* State lives in `src/reach.ts` (`useReachGap(active)`),
+the panel is `src/components/ReachPanel.tsx`, the blob styles are shared by the
+map and the legend in `src/components/reachStyles.tsx`.
+
+**Controls**: start point (`<select>` from `GET /reach/anchors`, localised
+name plus kind, default the first metro station), profile radios (manual
+wheelchair default, elderly with walking aid, pram; the walker is the baseline
+so it cannot be chosen), time budget as 5 / 10 / 15 min segmented buttons
+(`aria-pressed`), risk radios with the planner's labels (the initial value
+comes from the planner's stored `samaan.route.risk`). Every change re-runs
+`GET /reach?anchor=&profile=&cutoff_min=&risk=` (previous request aborted);
+loading is a `role="status"` line, errors `role="alert"` with **Check again**
+(404 → unknown start point, 422 → invalid request, else generic). A failed
+base request clears the numbers; a failed simulation keeps them.
+
+**Headline** (`.headline`): two tiles "Walker reaches **4.2 km**" /
+"Wheelchair user reaches **1.6 km**", then "Reach Gap **2.6 km** (38%)" and the
+sentence "A wheelchair user reaches 38% of what a walker reaches." Numbers are
+one decimal via `Intl.NumberFormat`, 32 px on phones and 40 px from 768 px up.
+Each tile's left border repeats its blob's outline pattern (solid / dashed /
+dotted). A one-line explanation says what is measured: footpath length
+reachable within the cutoff along the network, not an area. An sr-only
+`aria-live` region announces "Walker 4.2 km, Wheelchair user 1.6 km, gap
+2.6 km." (plus the simulated line) when a result arrives. `synthetic_overlay`
+shows the synthetic badge with "Numbers come from seeded demo data until real
+detections exist."
+
+**Map** (`MapView.tsx`, props `reach`, `reachFixed`, `reachFocus`): walker hull =
+light blue fill 25 % with a solid dark-blue outline; target hull = purple fill
+35 % with a dashed outline; simulated hull = green fill 35 % with a dotted
+outline drawn above the target. Fills sit below the footpaths, outlines above
+them. The anchor gets a dark star (canvas image, no glyph needed) labelled
+"Anchor: <name>"; the five fixes get numbered purple pins that turn green while
+simulated. The map fits the walker hull when a new result arrives (not when
+only the simulation changes, so a panned map stays put). The legend has a
+"Reach from anchor" section whose swatches are described in words (pattern +
+colour) and take their colours from `--reach-*` tokens, so high contrast turns
+them into black solid / dashed / dotted outlines on grey fills.
+
+**The city's to-do list**: one row per `FixItem`: rank, localised barrier name,
+severity word, **+gain km** (sr: "Gains 1.2 km of reach; 2.8 km in total after
+this fix"), cumulative "→ 2.8 km", cost "₹2–4 lakh (estimate)" (or "Cost: not
+estimated yet"), "0.4 km per lakh" and the cost source when present, a **Show**
+button (`aria-label` "Show <name> on the map": flies the map there, padding
+clear of the sheet, and opens the barrier popup when the barriers layer knows
+it) and a **Simulate fixing: <name>** checkbox (48 px row). The checked ids go
+out as `fixed=11,12`; the response's `simulated` hull is drawn with a 600 ms
+grow animation (fill-opacity 0 → 0.35 via `requestAnimationFrame`, skipped
+under `prefers-reduced-motion`), the row gets a dotted green border, its pin
+turns green and the headline gains "With these fixes: 3.9 km (gap 0.3 km)".
+**Simulate all 5** / **Clear simulation** set or empty the whole set. Changing
+the start point, profile, time budget or risk clears the simulation (the ranked
+list changes).
+
+### Keyboard-only flow
+
+1. Tab to **Reach Gap** in the page navigation and press Enter: the page opens
+   and focus moves to the "Reach Gap" heading; the first result loads for the
+   default metro station.
+2. Tab through start point (native select), profile radios (arrow keys), the
+   5 / 10 / 15 min buttons and down to the to-do list; Space on a **Simulate
+   fixing: …** checkbox re-runs the request, the live region reads the new
+   numbers; Enter on **Show** flies the map.
+3. Escape anywhere in the panel (or the × button) returns to the map page and
+   puts focus back on the **Reach Gap** nav link; the result is kept for the
+   next visit.
+
 ## Capture page (`#/capture`)
 
 For a phone held upright while walking along a footpath, photographing both
@@ -311,12 +386,15 @@ singleton, so switching back to the map does not stop uploads.
 - `src/components/UserDialog.tsx` - "Who are you?" dialog, `UserChip`, Tab trap helper.
 - `src/components/ValidatePage.tsx` - one-card-at-a-time validation with mini-map and 1/2/3 keys.
 - `src/components/MissionsPage.tsx` - ranked missions, show on map, walk this, recompute.
+- `src/components/ReachPanel.tsx` - Reach Gap controls, headline, to-do list with simulate-fix checkboxes.
+- `src/components/reachStyles.tsx` - blob / anchor / fix-pin styles and legend swatches shared by map and legend.
+- `src/reach.ts` - `useReachGap(active)` state hook (anchors, parameters, `/reach` result, simulated fix ids).
 - `src/user.ts` - stored citizen identity (`samaan.user`), `useUser()`, `createUser()`, `refreshUser()`.
 - `src/camera.ts` - `useCamera()` (rear camera preview + JPEG frame grab) shared by capture and report.
 - `src/sensors.ts` - `useSensors()` (GPS, compass heading, pitch), haversine.
 - `src/uploadQueue.ts` - persistent sequential upload queue with backoff.
 - `src/idb.ts` - minimal IndexedDB wrapper (open, put, getAll, remove).
-- `src/router.ts` - `useHashRoute()`, `navigate()`, `hrefFor()` for the four pages.
+- `src/router.ts` - `useHashRoute()`, `navigate()`, `hrefFor()` for the five pages.
 - `src/styles.css` - mobile-first styles, light/dark/high-contrast tokens.
 - `public/manifest.webmanifest`, `public/icon.svg` - PWA manifest (no service
   worker yet).
@@ -383,6 +461,13 @@ the i18n files also carry the eight barrier class names for labels.
       and visible key badge; vote results and resolutions in live regions;
       pending-report marker has a "?" label and a legend row; mission line is
       dashed with a casing and a text label.
+
+- [x] Reach Gap: focus moves to the heading on open and back to the nav link on
+      close/Escape; headline numbers in plain text with an sr-only live
+      summary; blobs differ by outline pattern (solid / dashed / dotted) and the
+      headline tiles repeat those patterns; legend swatches use high-contrast
+      tokens; simulate checkboxes are native inputs in 48 px rows with labels
+      that say what they do; grow animation disabled under reduced motion.
 
 Not yet done (later phases): service worker/offline, keyboard navigation of
 map features themselves (use the list), dragging the report marker on a mini

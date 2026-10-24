@@ -91,9 +91,15 @@ routing:                     # plan 6.6
   default_risk: balanced
   unknown_stretch_min_m: 5   # shorter unknown runs are not listed separately
 
-reach:
+reach:                       # plan 6.7
   default_cutoff_min: 10
+  allowed_cutoffs_min: [5, 10, 15, 20]
   fix_ranking_k: 5
+  default_profile: wheelchair_manual
+  default_risk: balanced
+  walker_mode: naive_accessible   # a walker ignores unknown penalties; barriers do not stop them
+  hull_concave_ratio: 0.35        # shapely concave_hull ratio for the display blob
+  max_fix_candidates: 60          # most-central barriers inside walker reach considered per round
 
 missions:                    # plan 6.9
   random_od_pairs: 500
