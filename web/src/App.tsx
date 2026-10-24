@@ -49,8 +49,8 @@ import { formatCoords, useRoutePlanner, type PlannerPoint, type PointRole } from
 import { useReachGap } from './reach';
 import { useSensors } from './sensors';
 import { useNavigation, type NavPosition } from './navigation';
-import { getMode, isOnboarded, PROFILE_MODE, setContribute, setMode, setOnboarded, useContribute, useMode } from './mode';
-import { createUser, getUser, setUser, useUser } from './user';
+import { PROFILE_MODE, setContribute, setMode, setOnboarded, useContribute, useMode } from './mode';
+import { createUser, setUser, useUser } from './user';
 import { addPoints } from './rewards';
 import { stopSpeaking } from './speech';
 
@@ -156,8 +156,9 @@ export default function App() {
   const [goError, setGoError] = useState<GoError>(null);
 
   // ---- First run: who are you / how do you move (sets profile + mode); blind path greets in Listen ----
+  // The "who is using the app" screen opens on every launch (user request); the stored user only prefills it.
   const user = useUser();
-  const [onboarded, setOnboardedState] = useState<boolean>(() => isOnboarded() && getUser() !== null);
+  const [onboarded, setOnboardedState] = useState<boolean>(false);
   const [listenGreet, setListenGreet] = useState(false);
   const showWelcome = !onboarded || route === 'welcome';
 
@@ -217,18 +218,6 @@ export default function App() {
     setFollow(true);
   }, [enableLocation]);
 
-  // A returning Listen-mode traveller lands in Listen and is greeted, no tap needed.
-  useEffect(() => {
-    if (onboarded && getMode() === 'listen' && currentRouteIsHome()) {
-      setListenGreet(true);
-      navigate('listen');
-    }
-    function currentRouteIsHome() {
-      return location.hash === '' || location.hash === '#/' || location.hash === '#/home';
-    }
-    // On mount only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   useEffect(() => {
     if (route !== 'listen' && route !== 'welcome') setListenGreet(false);
   }, [route]);

@@ -1111,5 +1111,17 @@ The webhook must be reachable from Vapi's servers: through the tunnel URL baked 
     `capacitor://localhost` and `http://localhost`) and watch the call logs during the demo; add
     credit if the free tier runs out.
 
+## Logo, login on every launch, photo import (2026-10-25)
+- The user's logo (sun, three travellers, "Not disabled. Just differently abled.") is now the iOS
+  app icon (1024 px, no alpha), the web icon/apple-touch-icon and sits in the welcome hero; the
+  tagline is the welcome tagline in both languages.
+- The "who is using the app" screen opens on every launch (user request); the stored user and
+  profile prefill it, so a returning traveller taps Continue once.
+- `pipeline/ingest/import_photos.py` + `make import-photos DIR=…`: imports a folder of phone photos
+  (JPEG/HEIC) using EXIF GPS, GPSImgDirection heading and DateTimeOriginal, uploads each through
+  `POST /images` (source own, session import-<date>), skips photos without GPS. 4 tests.
+- Human task 35: after importing the teammates' photos run `make infer-zero-shot && make geolocate`
+  and `POST /route/reload`, then check More → Demo → Refresh (real photos, coverage %).
+
 ## Phase P10 — Eval, demo, polish
 _Rescoped after the pivot; starts after the pivot work._

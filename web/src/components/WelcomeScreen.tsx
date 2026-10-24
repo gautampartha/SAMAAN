@@ -138,8 +138,11 @@ export default function WelcomeScreen({ lang, onLang, onDone, initialProfile = n
       <header className="welcome__hero">
         <div className="welcome__brandrow">
           <p className="welcome__brand">
-            {t('app.name')}
-            <span className="welcome__tagline">{t('welcome.tagline')}</span>
+            <img className="welcome__logo" src="/logo.png" alt="" width="56" height="56" />
+            <span>
+              {t('app.name')}
+              <span className="welcome__tagline">{t('welcome.tagline')}</span>
+            </span>
           </p>
           <div className="segmented segmented--onhero" role="group" aria-label={t('lang.label')}>
             {LANGS.map((code) => (

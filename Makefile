@@ -101,6 +101,11 @@ api:
 api-lan:
 	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 
+# Import a folder of phone photos (EXIF GPS) as own-photo coverage: make import-photos DIR=~/Downloads/walk
+IMPORT_API ?= http://127.0.0.1:8000
+import-photos:
+	$(PY) -m pipeline.ingest.import_photos --dir "$(DIR)" --api $(IMPORT_API)
+
 # Fresh demo state on the running API: drops reports/votes/rides/own photos, restores the seed overlay.
 demo-reset:
 	curl -sS -X POST http://127.0.0.1:8000/demo/reset

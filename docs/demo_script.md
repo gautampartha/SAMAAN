@@ -63,6 +63,12 @@ not the phone camera, so every photo carries GPS, heading and pitch and uploads 
 5. Back at the laptop: `make infer-zero-shot` (detections on the new photos) → `make geolocate`
    (barriers) → `POST /route/reload`, or simply `curl -X POST <api>/coverage/recompute` for coverage
    only (uploads already trigger this).
+
+   **Photos taken with the phone's own camera app** (JPEG or HEIC with location on): AirDrop or
+   copy them into one folder on the laptop, then
+   `make import-photos DIR=~/Downloads/campus-walk` — it reads GPS, compass heading and time from
+   EXIF, converts HEIC, uploads each photo as own coverage and lists the ones without GPS. Then the
+   same three commands as above.
 6. More → Demo → Refresh: real photos, coverage % and real barriers should reflect the walk.
 
 What not to do: no Google Street View screenshots, no photos of people's faces up close, no staged
