@@ -55,6 +55,20 @@ class FootpathEdge(SQLModel, table=True):
     synthetic: bool = False  # geometry origin: False for real OSM
 
 
+class RoadCentreline(SQLModel, table=True):
+    """OSM road centrelines (metric + WGS84 WKT) kept for side-of-road decisions (plan 6.4 step 4)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    osm_id: int | None = Field(default=None, index=True)
+    highway: str | None = None
+    name: str | None = None
+    geom_wkt: str
+    geom_m_wkt: str
+    length_m: float
+    half_width_m: float | None = None
+    has_sidewalks: bool = True  # False for road_shared
+
+
 class Coverage(SQLModel, table=True):
     """Observation summary per edge side (plan 6.2). Derived from images/rides; seeded in P0."""
 
@@ -125,6 +139,9 @@ class Detection(SQLModel, table=True):
     model: str | None = None  # weights file / run name that produced it
     image_w: int | None = None  # pixel size the bbox refers to
     image_h: int | None = None
+    position_along_edge_m: float | None = None
+    naive_edge_id: int | None = None  # baseline snapper result, kept for eval/snapping_eval.py
+    severity: int | None = None  # human-labelled severity when the detection came from a label/report
     synthetic: bool = False
 
 

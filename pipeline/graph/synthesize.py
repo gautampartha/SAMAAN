@@ -468,5 +468,18 @@ def synthesize(G: nx.MultiGraph, crossing_nodes: list[dict[str, Any]], cfg: dict
         if d["kind"] == "crossing":
             F.nodes[a]["kind"] = "crossing_end"
             F.nodes[b]["kind"] = "crossing_end"
+    # Road centrelines (for side-of-road decisions in P4), in the same orientation as the
+    # sidewalk L/R convention.
+    centrelines = []
+    for u, v, k, d in G.edges(keys=True, data=True):
+        key = (u, v, k)
+        if cls.get(key) not in ("sidewalk", "shared"):
+            continue
+        geom = road_geoms.get(key) or _oriented_geometry(G, u, v, d)
+        osmid = _scalar(d.get("osmid"))
+        centrelines.append({"osm_id": int(osmid) if isinstance(osmid, int) else None, "geometry": geom,
+                            "highway": _scalar(d.get("highway")), "name": _scalar(d.get("name")),
+                            "half_width_m": offset.get(key, 0.0) - extra, "has_sidewalks": cls.get(key) == "sidewalk"})
+    F.graph["road_centrelines"] = centrelines
     log.info("synthesised footpath graph: %d nodes, %d edges, %s", F.number_of_nodes(), F.number_of_edges(), stats)
     return F, stats

@@ -401,5 +401,83 @@ its detector numbers only from `eval/results/detector_karkarduma_v1_ours.md` aft
 
 ---
 
-## Phase P4 — Geolocate & snap
+## Phase P4 — Geolocate & snap (2026-10-24) — pipeline done, numbers pending detections + ground truth
+
+### Plan
+Turn detections into barriers on the right segment and side (plan 6.4): bearing from the box
+centre and HFOV, ground-plane distance from the box bottom, pitch and camera height (clamped
+1–25 m, fallback 6 m), position offset in EPSG:32643, side from the cross product against the
+nearest road centreline (centrelines now stored by the graph build) cross-checked against the
+object's side of the camera's travel direction, snap to the nearest footpath edge **on that
+side** within 12 m, cluster per class and edge (4 m), one barrier per cluster with confidence from
+GPS accuracy, distance, side agreement and sightings, severity from the class default until human
+labels/reports exist, time-of-day profiles for temporary classes, then the shared state
+recompute. A naive baseline (nearest edge to the camera, side ignored) and
+`eval/snapping_eval.py` against `data/ground_truth/snapping.csv`. Plus `docs/gpu_training_handoff.md`
+so the detector can be trained later on another machine.
+
+### What was built
+- `pipeline/geolocate/geolocate.py`: bearing from box centre and HFOV; ground-plane distance
+  from the box bottom, VFOV derived from HFOV and aspect, pitch from the capture page
+  (negative = tilted down), clamp 1–25 m, fallback 6 m when the box bottom is within 2° of the
+  horizon; position offset in EPSG:32643; **side of road** from the cross product against the
+  nearest stored road centreline (new `road_centreline` table written by the graph build, same
+  L/R convention as the synthesised sidewalks), cross-checked against the object's side of the
+  travel direction (previous image in the same session/sequence within 60 s and ≥ 2 m, else the
+  heading); **side-aware snap** to the nearest edge on that side within 12 m preferring the matched
+  road's own sidewalk, then any edge on that side, then crossings/footways; `naive_edge_id` =
+  nearest edge to the camera, side ignored (baseline); confidence from GPS accuracy, distance,
+  side agreement and whether an on-side edge was found (weights in `config/pipeline.yaml`).
+- `pipeline/geolocate/barriers.py`: 1-D gap clustering per class and edge (eps 4 m, equivalent to
+  DBSCAN with min_samples 1 along the edge), one barrier per cluster at the median position,
+  confidence rises with sightings, severity = median of labelled severities when any exist else
+  the class default (`barriers.default_severity`, team_estimate), temporary classes get a
+  smoothed hour-of-day profile from sighting timestamps (flat 0.5 below 3 sightings). Only
+  detector-derived barriers are rebuilt; report barriers are untouched.
+- `make geolocate` runs locate → snap → barriers → shared state recompute. `GET /layers/detections`
+  shows estimated positions, assigned vs naive edge and confidence for debugging.
+- `eval/snapping_eval.py` (`make snapping-eval`): per ground-truth row (image, class, true edge,
+  true side) compares the side-aware and naive snappers on edge and side accuracy; refuses
+  synthetic images; writes `eval/results/snapping_<tag>.{json,md}`. Template in
+  `data/ground_truth/snapping.csv.example`.
+- `docs/gpu_training_handoff.md`: what to copy to a GPU machine, commands, what to bring back.
+- Tests (86 passing): bearing wrap-around, VFOV, ground distance (fallback, clamp, pitch
+  direction), image side, road side convention and travel flip, side-aware snap picks the far
+  sidewalk the naive snapper misses, disagreement lowers confidence, clustering/confidence/
+  profile, full DB pass with three sightings → one barrier (and a report barrier left alone),
+  snapping eval bookkeeping and the synthetic guard.
+
+### Numbers
+None yet: snapping accuracy needs real detections (after the GPU training) and the ~100
+ground-truth rows (task 15). `make geolocate` on the real DB is a no-op today (0 detections);
+seeded barriers remain the demo content.
+
+### Decisions taken alone
+- Travel direction comes from consecutive images of the same walk when available; otherwise
+  the compass heading stands in for it (a walker looks where they go).
+- Severity for detector-only barriers is a per-class default until a human label or report
+  supplies one; the default table is flagged team_estimate.
+- Clustering is 1-D along the edge because the P1 graph already separates sides; this is what
+  "same edge side" means after P1.
+- Detections store the naive edge alongside the assigned edge so the eval can run later without
+  re-snapping.
+
+### Open issues
+- Ground-plane distance assumes a flat footpath and the box bottom touching the ground; raised
+  objects (signboards) will be placed too far. Plan 6.4 names a monocular depth model as the
+  upgrade.
+- Mapillary images have no pitch; 0 is assumed.
+- Side disagreement is only detectable when GPS error moves the camera across the centreline;
+  that is exactly the failure mode the snapping eval should expose.
+
+### Human tasks (P4)
+15. **Snapping ground truth** (~100 barriers, 1–2 h, after the photo walks). On the map with the
+    images layer on, for a barrier visible in a photo note: the image id (popup), the class, the
+    footpath edge id it really sits on (click the footpath), and that edge's side. Fill
+    `data/ground_truth/snapping.csv` (see `snapping.csv.example`, remove comment lines). Commit it.
+    After `make infer` + `make geolocate`, run `make snapping-eval` and commit `eval/results/snapping_*`.
+
+---
+
+## Phase P5 — Routing API
 _Not started. Waiting for "go"._

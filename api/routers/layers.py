@@ -8,7 +8,16 @@ from sqlmodel import Session, select
 
 from api.db import get_session
 from api.geojson import collection, feature, point_feature
-from api.models import Anchor, Barrier, Coverage, DemoRoute, FootpathEdge, FootpathNode, Meta
+from api.models import (
+    Anchor,
+    Barrier,
+    Coverage,
+    DemoRoute,
+    Detection,
+    FootpathEdge,
+    FootpathNode,
+    Meta,
+)
 from common import config
 
 router = APIRouter(prefix="/layers", tags=["layers"])
@@ -81,6 +90,20 @@ def anchors(session: Session = Depends(get_session)) -> dict[str, Any]:
         "source": a.source, "synthetic": a.synthetic,
     }, fid=a.id) for a in rows]
     return collection(feats, _attribution(session), any(a.synthetic for a in rows))
+
+
+@router.get("/detections")
+def detections(session: Session = Depends(get_session), limit: int = 5000) -> dict[str, Any]:
+    """Located detections (estimated positions) for debugging the snapper."""
+    names = config.class_names()
+    rows = [d for d in session.exec(select(Detection).limit(limit)).all() if d.est_lat is not None]
+    feats = [point_feature(d.est_lon, d.est_lat, {
+        "id": d.id, "image_id": d.image_id, "class": d.class_id, "name_en": names.get(d.class_id, {}).get("en", d.class_id),
+        "score": round(d.score, 3), "est_distance_m": d.est_distance_m, "assigned_edge_id": d.assigned_edge_id,
+        "naive_edge_id": d.naive_edge_id, "side": d.side, "snap_confidence": d.snap_confidence, "model": d.model,
+        "synthetic": d.synthetic,
+    }, fid=d.id) for d in rows]
+    return collection(feats, _attribution(session), any(d.synthetic for d in rows))
 
 
 @router.get("/demo")

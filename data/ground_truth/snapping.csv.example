@@ -1,0 +1,5 @@
+image_id,class_id,true_edge_id,true_side,note
+# One row per barrier seen in an image: the image id (from /layers/images), the detector class,
+# the footpath edge id it really sits on (click the footpath on the map) and that edge's side.
+# Delete these comment lines; save as snapping.csv next to this file.
+123,steps_or_high_kerb,456,L,shop front steps opposite the metro gate 2

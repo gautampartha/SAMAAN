@@ -17,19 +17,46 @@ mapillary:                   # plan 6.2; token from env MAPILLARY_TOKEN (human t
   attribution_template: "Mapillary image {id} by {creator}, {licence} (https://www.mapillary.com/app/?pKey={id})"
   thumb_dir: "data/raw/mapillary"
 
-geolocation:
+geolocation:                 # plan 6.4
   distance_min_m: 1.0
   distance_max_m: 25.0
   distance_fallback_m: 6.0
+  min_angle_below_horizon_deg: 2.0   # below this the ground-plane model is unreliable -> fallback
+  road_search_m: 30.0                # nearest road centreline must be within this distance
+  travel_direction_max_gap_s: 60     # previous image in the same session/sequence counts as travel direction if within this
+  travel_direction_min_move_m: 2.0
+  confidence:                        # team_estimate weights, sum to 1
+    gps_accuracy: 0.35               # 1.0 at <= 5 m, 0 at >= 25 m
+    distance: 0.25                   # 1.0 at <= 5 m, 0 at >= 25 m
+    side_agreement: 0.25             # 1.0 when image side and road side agree
+    snapped_on_side: 0.15            # 1.0 when an edge on the computed side was found within range
 
 snapping:
   max_snap_distance_m: 12.0
+  cluster_eps_m: 4.0                # same class + same edge, 1-D along the edge
   footway_connect_distance_m: 5.0   # 6.1 step 4
   dedupe_eps_m: 4.0                 # DBSCAN per class, same edge side
   report_duplicate_distance_m: 4.0  # 6.8 step 5
 
 state:
   staleness_days_permanent: 180
+
+barriers:                    # plan 6.4 step 6 / 3c
+  base_confidence: 0.5
+  confidence_per_extra_sighting: 0.12
+  max_confidence: 0.98
+  temporary_min_sightings_for_profile: 3   # below this a flat 0.5 profile is used
+  # Severity assigned to detector-only barriers (no human label yet). team_estimate; replaced by
+  # the median of labelled severities as soon as a report or label exists.
+  default_severity:
+    curb_ramp: 1
+    steps_or_high_kerb: 4
+    broken_surface: 3
+    open_drain: 4
+    fixed_obstacle: 3
+    parked_vehicle: 3
+    vendor_encroachment: 3
+    bike_barrier: 4
 
 footpath_synthesis:          # plan 6.1 (P1). team_estimate unless noted.
   sidewalk_offset_extra_m: 1.0          # sidewalk centreline = road half width + this

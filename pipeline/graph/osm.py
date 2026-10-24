@@ -22,7 +22,7 @@ from shapely import wkt
 from shapely.geometry import LineString, Point
 from sqlmodel import Session, select
 
-from api.models import Anchor, FootpathEdge, FootpathNode, Meta
+from api.models import Anchor, FootpathEdge, FootpathNode, Meta, RoadCentreline
 from common.crs import METRIC, to_wgs84
 from common.paths import ROOT
 
@@ -162,6 +162,11 @@ def write_graph(G_proj: nx.MultiGraph, session: Session, synthetic: bool = False
             state="unknown",
             synthetic=synthetic,
         ))
+    for rc in G_proj.graph.get("road_centrelines", []):
+        g = rc["geometry"]
+        session.add(RoadCentreline(osm_id=rc.get("osm_id"), highway=rc.get("highway"), name=rc.get("name"),
+                                   geom_wkt=to_wgs84(g).wkt, geom_m_wkt=g.wkt, length_m=float(g.length),
+                                   half_width_m=rc.get("half_width_m"), has_sidewalks=bool(rc.get("has_sidewalks", True))))
     session.commit()
     return node_ids
 
