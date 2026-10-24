@@ -32,6 +32,32 @@ unknown_multiplier:
 # profiles where the class is impassable; below it, penalty is scaled by P.
 temporary_impassable_probability: 0.6   # team_estimate
 
+# Edge-kind rules (plan 6.6, graph kinds from P1). team_estimate. `impassable: true` removes the
+# edge for that profile; `penalty_seconds` is added once per edge; `multiplier` scales the travel
+# time (walking on the carriageway, road_shared). Crossings use the signalised value when the
+# crossing is known to have a signal, otherwise the unsignalised one.
+edge_kind_rules:
+  walker:
+    steps: { penalty_seconds: 5 }
+    crossing: { penalty_seconds_signalised: 20, penalty_seconds_unsignalised: 10 }
+    connector: { penalty_seconds: 2 }
+    road_shared: { multiplier: 1.1 }
+  wheelchair_manual:
+    steps: { impassable: true }
+    crossing: { penalty_seconds_signalised: 30, penalty_seconds_unsignalised: 25, kerb_ramp_missing_impassable: true }
+    connector: { penalty_seconds: 5 }
+    road_shared: { multiplier: 1.6 }
+  elderly_walking_aid:
+    steps: { penalty_seconds: 45 }
+    crossing: { penalty_seconds_signalised: 30, penalty_seconds_unsignalised: 30 }
+    connector: { penalty_seconds: 5 }
+    road_shared: { multiplier: 1.4 }
+  pram:
+    steps: { impassable: true }
+    crossing: { penalty_seconds_signalised: 25, penalty_seconds_unsignalised: 20, kerb_ramp_missing_impassable: false }
+    connector: { penalty_seconds: 4 }
+    road_shared: { multiplier: 1.4 }
+
 profiles:
   walker:
     name: { en: "Walker", hi: "पैदल यात्री" }

@@ -85,6 +85,12 @@ footpath_synthesis:          # plan 6.1 (P1). team_estimate unless noted.
   crossing_node_match_distance_m: 2.0   # OSM highway=crossing node -> parent road
   node_merge_tolerance_m: 0.5           # GeoJSON re-import: endpoints closer than this share a node
 
+routing:                     # plan 6.6
+  snap_origin_max_m: 150     # origin/destination must be within this of a graph node
+  default_profile: wheelchair_manual
+  default_risk: balanced
+  unknown_stretch_min_m: 5   # shorter unknown runs are not listed separately
+
 reach:
   default_cutoff_min: 10
   fix_ranking_k: 5

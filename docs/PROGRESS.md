@@ -479,5 +479,76 @@ seeded barriers remain the demo content.
 
 ---
 
-## Phase P5 — Routing API
+## Phase P5 — Routing API (2026-10-24) — done
+
+### Plan
+Plan 6.6: per-profile edge cost = length / speed + Σ barrier penalties (impassable edges
+removed; temporary barriers weighted by P(present at departure hour) or impassable above a
+probability threshold) + edge-kind rules (steps, crossings, carriageway walking, connectors)
++ unknown multiplier by risk tolerance (strict ×5 / balanced ×1.5 / relaxed ×1). NetworkX A*
+with a straight-line-time heuristic. Three modes returned together: `shortest` (walker, ignores
+barriers), `naive_accessible` (profile rules, unknown treated as clear), `samaan` (profile rules
++ unknown penalty). Response per route: geometry, length, ETA, barriers encountered with photo
+URLs, verified % (clear length / total), unknown stretches with lengths. `GET /route` with
+origin/destination or `demo=riya`. Unit tests on toy graphs; API test on the toy fixture.
+All new rule values go in `config/profiles.yaml` as team_estimate.
+
+### What was built
+- `api/services/routing.py`: `RoutingContext` (graph, edge info, active barriers per edge with
+  photo image ids) built from the DB at startup and refreshed after uploads/recompute or
+  `POST /route/reload`. `edge_cost` implements plan 6.6: length / profile speed; edge-kind rules
+  (`edge_kind_rules` in `profiles.yaml`: steps impassable for wheelchair and pram, crossing
+  seconds signalised/unsignalised, a known-missing kerb ramp makes a crossing impassable for
+  wheelchairs, carriageway walking multiplier, connector seconds); barrier penalties by class
+  and severity with nearest-lower-severity lookup; impassable → edge removed; temporary
+  barriers scaled by P(present at departure hour) or impassable above 0.6; unknown edges × risk
+  multiplier in `samaan` mode only. A* with an admissible straight-line-at-fastest-speed
+  heuristic (tested against Dijkstra). Three modes computed together.
+- Route description: WGS84 geometry, length, ETA, edge ids, **verified %** (clear length /
+  total), unknown %, blocked %, barriers encountered with class names (en/hi), severity, P(present),
+  impassable-for-selected-profile flag and photo URLs, unknown stretches (contiguous unknown
+  runs ≥ 5 m with start/end and length).
+- `GET /route`: `from_lat/from_lon/to_lat/to_lon` snapped to the nearest node within 150 m, or
+  `demo=riya`; `profile`, `risk`, `depart` (hour). Returns all three routes plus
+  `synthetic_overlay` so the UI can badge seeded content. 422/404 on bad input.
+- Tests (96 passing): severity lookup, permanent/temporary barrier costs, shortest ignores
+  barriers while the wheelchair detours, unknown multiplier separates naive from SAMAAN,
+  verified %/unknown stretches, steps and crossing rules, time of day flips a route,
+  unreachable → null, heuristic optimality on a grid, API contract on the toy fixture.
+
+### Demo trip on the real graph with the SEEDED overlay (illustrative, not an evaluation)
+Wheelchair, strict, 14:00. These numbers come from synthetic barriers/coverage and will change
+when real data replaces the seed; they only show the three-way comparison works end to end.
+
+| mode | length | ETA | verified | unknown | barriers on the way |
+|---|---|---|---|---|---|
+| shortest (what a normal map does) | 800 m | 10.3 min | 69 % | 0 % | two steps, parked two-wheelers |
+| naive accessible (unknown treated as clear) | 864 m | 16.5 min | 45 % | 55 % | "0 barriers", 6 unknown stretches |
+| SAMAAN | 821 m | 19.6 min | 99.8 % | 0.2 % | one kerb ramp (positive), bikes with a time-weighted penalty |
+
+### Decisions taken alone
+- Impassability shown on the shortest route is judged for the selected profile, so the
+  comparison view can say "this normal-map route sends a wheelchair over steps".
+- Crossings cost a fixed number of seconds per profile; with a known missing kerb ramp they are
+  impassable for wheelchairs (`kerb_ramp_missing_impassable`), unknown ramps are not (that is
+  what the unknown multiplier is for once P2 coverage exists on crossings).
+- Edges on the `shortest` route are priced at walker speed with no rules at all, per plan.
+- `verified %` counts only `clear` edges; blocked-but-passable edges (penalty) are not verified.
+
+### Open issues
+- ETA includes penalties, so SAMAAN's ETA can exceed the naive ETA even when shorter; the UI
+  should show length and ETA side by side and explain penalties.
+- `nearest_node` is a linear scan (1.5 k nodes, fine); switch to a KD-tree if the zone grows.
+- Routes are not cached; each request runs three A* searches (~ms on this graph).
+
+### Human tasks (P5)
+16. **Review profile rules** (30 min, with a wheelchair user if possible): `config/profiles.yaml`
+    → `profiles.*.rules`, `edge_kind_rules`, `unknown_multiplier`,
+    `temporary_impassable_probability`. Adjust severities that block or merely slow each profile.
+17. **Fill the cited values** (same as task 3): `standards.*` and `speed_m_s.source` from the
+    Harmonised Guidelines 2021 or another citable source, replacing every `TODO: cite`.
+
+---
+
+## Phase P6 — Web app core
 _Not started. Waiting for "go"._

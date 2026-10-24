@@ -12,7 +12,8 @@ from sqlmodel import Session, func, select
 
 from api.db import get_session, init_db
 from api.models import Barrier, FootpathEdge, Meta
-from api.routers import images, layers
+from api.routers import images, layers, route
+from api.services.routing import build_context
 from common import config
 from pipeline.graph.osm import load_nx_from_db
 
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     engine = init_db()
     with Session(engine) as session:
         app.state.graph = load_nx_from_db(session)
+        app.state.routing = build_context(session)
         app.state.meta = {m.key: m.value for m in session.exec(select(Meta)).all()}
     g = app.state.graph
     log.info("graph loaded: %d nodes, %d edges", g.number_of_nodes(), g.number_of_edges())
@@ -39,6 +41,7 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in _origins], 
                    allow_headers=["*"])
 app.include_router(layers.router)
 app.include_router(images.router)
+app.include_router(route.router)
 
 
 @app.get("/health")

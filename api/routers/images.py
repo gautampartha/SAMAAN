@@ -51,9 +51,11 @@ def recompute_all(request: Request | None = None) -> dict[str, Any]:
         cov = compute_coverage(session)
         states = recompute_states(session)
         if request is not None:
+            from api.services.routing import build_context
             from pipeline.graph.osm import load_nx_from_db
 
             request.app.state.graph = load_nx_from_db(session)
+            request.app.state.routing = build_context(session)
     return {"coverage": cov, "states": states}
 
 
