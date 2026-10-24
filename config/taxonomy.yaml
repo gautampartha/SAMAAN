@@ -16,7 +16,7 @@ severity_scale:
 detector_classes:
   - id: curb_ramp
     yolo_index: 0
-    name: { en: "Kerb ramp", hi: "कर्ब रैम्प" }
+    name: { en: "Kerb ramp", hi: "कर्ब रैंप" }
     sidewalk_equivalent: CurbRamp
     positive: true          # a good thing; needed to infer missing ramps
     temporary: false

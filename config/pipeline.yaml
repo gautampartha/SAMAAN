@@ -20,18 +20,32 @@ snapping:
 state:
   staleness_days_permanent: 180
 
-footpath_synthesis:          # used from P1
-  sidewalk_offset_extra_m: 1.0
+footpath_synthesis:          # plan 6.1 (P1). team_estimate unless noted.
+  sidewalk_offset_extra_m: 1.0          # sidewalk centreline = road half width + this
   lane_width_m: 3.5
   default_half_width_m_by_highway:
+    trunk: 8.0
+    trunk_link: 5.0
     primary: 7.0
+    primary_link: 5.0
     secondary: 6.0
+    secondary_link: 4.5
     tertiary: 4.5
+    tertiary_link: 4.0
     residential: 3.5
     unclassified: 3.5
     service: 2.5
     living_street: 3.0
     default: 3.5
+  # Roads that get synthesised left/right sidewalks unless tagged sidewalk=no|none.
+  synthesize_for_highway: [trunk, trunk_link, primary, primary_link, secondary, secondary_link,
+                           tertiary, tertiary_link, residential, unclassified, living_street, service]
+  # service=* values that are walked on the carriageway (no sidewalk synthesised).
+  shared_service_types: [driveway, parking_aisle, alley, emergency_access]
+  min_sidewalk_length_m: 2.0            # shorter trimmed sidewalks fall back to road_shared
+  footway_connect_distance_m: 5.0       # 6.1 step 4
+  crossing_node_match_distance_m: 2.0   # OSM highway=crossing node -> parent road
+  node_merge_tolerance_m: 0.5           # GeoJSON re-import: endpoints closer than this share a node
 
 reach:
   default_cutoff_min: 10

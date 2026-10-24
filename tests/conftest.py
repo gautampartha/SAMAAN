@@ -1,5 +1,5 @@
-"""Offline fixtures: a toy grid graph in EPSG:32643 around the zone centre, seeded with the
-same code path as `make seed`. No network access in tests."""
+"""Offline fixtures: a toy road grid in EPSG:32643 around the zone centre, run through footpath
+synthesis (P1) and seeded with the same code path as `make seed`. No network access in tests."""
 from __future__ import annotations
 
 import copy
@@ -36,8 +36,8 @@ def toy_grid_graph() -> nx.MultiDiGraph:
                 G.add_edge(m, n, length=SPACING_M, highway="residential", osmid=1000 + n)
             if j + 1 < GRID_N:
                 m = i * GRID_N + j + 1
-                G.add_edge(n, m, length=SPACING_M, highway="footway", osmid=2000 + n)
-                G.add_edge(m, n, length=SPACING_M, highway="footway", osmid=2000 + n)
+                G.add_edge(n, m, length=SPACING_M, highway="residential", osmid=2000 + n)
+                G.add_edge(m, n, length=SPACING_M, highway="residential", osmid=2000 + n)
     return G
 
 
@@ -69,14 +69,16 @@ def toy_db(tmp_path_factory, toy_zone_cfg, toy_pipeline_cfg) -> Path:
 
     from api.db import reset_db
     from pipeline.graph.osm import write_anchors, write_graph, write_meta
+    from pipeline.graph.synthesize import synthesize
     from pipeline.seed.synthetic import seed
 
     path = tmp_path_factory.mktemp("db") / "toy.sqlite"
     os.environ["SAMAAN_DB"] = str(path)
     engine = reset_db(path)
     G = ox.convert.to_undirected(toy_grid_graph())
+    F, _ = synthesize(G, [], config.pipeline()["footpath_synthesis"])
     with Session(engine) as session:
-        write_graph(G, session, synthetic=True)
+        write_graph(F, session, synthetic=True)
         write_anchors(toy_zone_cfg["anchors"], session)
         write_meta(session, osm_attribution="toy graph (test)")
         seed(session, zone_cfg=toy_zone_cfg, pipeline_cfg=toy_pipeline_cfg, now=NOW)

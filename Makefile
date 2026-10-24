@@ -4,12 +4,15 @@ PY      := .venv/bin/python
 UV      := uv
 DB      := data/processed/samaan.sqlite
 
-.PHONY: setup seed graph api test lint web web-install clean-db help
+.PHONY: setup seed graph graph-export graph-import graph-validate api test lint web web-install clean-db help
 
 help:
 	@echo "make setup        create .venv (Python 3.11) and install deps"
-	@echo "make graph        download OSM for the zone and build the P0 graph (cached)"
-	@echo "make seed         graph + synthetic barriers/coverage into $(DB)  [synthetic=true]"
+	@echo "make graph        download OSM (cached) and synthesise the footpath graph into $(DB)"
+	@echo "make graph-export export the graph to data/processed/footpath_graph.geojson for QGIS/JOSM"
+	@echo "make graph-import FILE=path.geojson   load a human-corrected graph (then make seed)"
+	@echo "make graph-validate                   print the validation report"
+	@echo "make seed         synthetic barriers/coverage into $(DB) (builds the graph if missing) [synthetic=true]"
 	@echo "make api          serve FastAPI on http://127.0.0.1:8000 (docs at /docs)"
 	@echo "make test         run pytest"
 	@echo "make web-install  npm install in web/"
@@ -21,8 +24,19 @@ setup:
 
 graph:
 	$(PY) -m pipeline.graph.build
+	$(PY) -m pipeline.graph.validate
 
-seed: graph
+graph-export:
+	$(PY) -m pipeline.graph.export
+
+graph-import:
+	$(PY) -m pipeline.graph.import_corrected $(FILE)
+
+graph-validate:
+	$(PY) -m pipeline.graph.validate
+
+seed:
+	@test -f $(DB) || $(MAKE) graph
 	$(PY) -m pipeline.seed.synthetic
 
 api:

@@ -119,5 +119,98 @@ later, by demo mode). `python -m pipeline.graph.build --force-download` refreshe
 
 ---
 
-## Phase P1 — Footpath graph
+## Phase P1 — Footpath graph (2026-10-24) — done
+
+### Plan
+Replace the P0 "roads as edges" graph with a real footpath network (plan 6.1):
+offset left/right sidewalks per road (`shapely.offset_curve`, half width from `width` /
+`lanes` / per-class default, +1 m), trimmed at junctions; crossing edges at every junction
+(ring of sidewalk endpoints in angular order: same-road pairs = crossings, adjacent-road pairs =
+corner links) and at every OSM `highway=crossing` node mid-block; real OSM footways/steps kept
+and connected to sidewalks within 5 m; roads tagged `sidewalk=no` (and driveways) kept as
+`road_shared`; OSM tags imported (sidewalk, kerb, crossing, wheelchair, width, surface, steps
+attributes); `signal` and `kerb_ramp_start/end` on crossings from OSM, null = unknown.
+Export to GeoJSON for QGIS/JOSM correction, import back, and a validation report (components,
+dangling ends, crossings without ends). Tests on toy road layouts. "Resolve issues on your own"
+was the instruction for this phase, so decisions are recorded here instead of asked.
+
+### What was built
+- `pipeline/graph/synthesize.py`: classification (sidewalk / shared / footway / steps),
+  half width from `width` → `lanes` → per-class default (`config/pipeline.yaml`), left/right
+  `offset_curve` at half width + 1 m, trimming at junctions by the crossing road's offset,
+  fallback to `road_shared` when a trimmed sidewalk would be under 2 m, `sidewalk=left|right`
+  honoured. Junction rule: each road's L/R ends form a **crossing** (also around dead ends);
+  angularly adjacent roads get a **corner** link (kind sidewalk, tag `corner`); footways, steps
+  and shared roads ending at the junction node get **connector** edges to every sidewalk end
+  there. Mid-block OSM `highway=crossing` nodes split both sidewalks and add a crossing with
+  `signal` / `kerb_ramp_*` from the node tags (`traffic_signals`, `crossing=*`, `kerb=*`).
+  Dangling OSM footway ends connect to the nearest sidewalk within 5 m. Links shorter than
+  0.5 m merge their end nodes, so right-angle corners share one node.
+- OSM tag import: way tags (sidewalk, kerb, crossing, wheelchair, width, lanes, surface,
+  smoothness, lit, step_count, ramp, handrail, incline, tactile_paving …) and node tags
+  (crossing, kerb, traffic_signals, tactile_paving) are read via osmnx `useful_tags_*` and
+  stored in `osm_tags`; crossing flags stay `null` when OSM is silent (= unknown).
+- New edge columns: `synthesized`, `signal`, `kerb_ramp_start`, `kerb_ramp_end`; node `kind`
+  `crossing_end` on crossing ends. Footpaths layer exposes them plus `corner` and
+  `parent_road_osm_id`.
+- `pipeline/graph/validate.py` (`make graph-validate`): components and length share, dangling
+  nodes/edges by kind, crossings with a free end, edges under 0.5 m, counts and km by kind,
+  unknown signal/kerb counts; writes `data/processed/graph_validation.md` and the Meta table.
+- `pipeline/graph/export.py` (`make graph-export`) → `data/processed/footpath_graph.geojson`
+  (+ `_nodes`), WGS84, one property per column, `osm_tags` as a JSON string for QGIS.
+- `pipeline/graph/import_corrected.py` (`make graph-import FILE=…`): rebuilds nodes by merging
+  endpoints within 0.5 m, keeps the original `id` as `osm_tags.import_id`, re-snaps anchors,
+  records provenance in Meta and prints the validation report. `make seed` then restores the
+  synthetic overlay without rebuilding the graph.
+- Tests (54 passing): half-width parsing, classification, sides via the cross-product helper,
+  dead-end crossings, 4-way ring (8 sidewalks, 4 centre crossings + 4 dead-end crossings,
+  4 corners merged into shared corner nodes), T-junction signal/kerb propagation, `sidewalk=no`,
+  left-only, mid-block crossing split with signal, far crossing ignored, footway connector within
+  5 m (and dangling beyond), footway-at-junction hub, steps tags kept, short-stub fallback, 3×3
+  and 5×5 grids (one component, no dangling ends), export → edit → import round trip.
+
+### Zone results from `make graph` (real OSM, no synthetic content)
+| Item | Value |
+|---|---|
+| Footpath graph | 1510 nodes, 2475 edges, 74.0 km |
+| By kind | 1367 sidewalk (63.8 km), 896 crossing (8.1 km), 188 connector, 21 road_shared, 3 footway |
+| Components | 1 (100% of length) |
+| Dangling | 3 footway ends (OSM footways that reach nothing within 5 m) |
+| Crossings with unknown signal / kerb ramp | 896 / 896 |
+| OSM tags present in the zone | `highway=crossing`: 0, `traffic_signals`: 0, `kerb`: 0, `sidewalk`: 0 |
+
+So every crossing in the zone is genuinely unknown until observed; OSM has mapped none of this.
+Riya's trip now runs 800 m over 39 footpath edges (sidewalks + crossings).
+
+### Decisions taken alone (per "resolve issues on your own")
+- Roads without `sidewalk=*` get sidewalks on both sides; the human correction pass removes the
+  ones that don't exist (likely many in the inner colony lanes).
+- Service roads of type driveway / parking aisle / alley stay `road_shared`; other service roads
+  get sidewalks.
+- Connectors through a junction node (footway or shared lane meeting a road) are kind
+  `connector`; P5 routing will price them like crossings.
+- Generated GeoJSON exports and the validation report are gitignored; the corrected file goes
+  in `data/corrected/` and is committed.
+
+### Open issues
+- Sidewalk offsets follow OSM centrelines; where OSM widths are missing the per-class default
+  decides the offset, so sidewalks can sit on buildings along narrow lanes. Human correction.
+- Road-level `wheelchair=no` / `surface` tags are stored but not yet used for state or routing (P5).
+- The 3 dangling OSM footways are real map gaps; leave or fix in QGIS.
+- Vite HMR logs WebSocket errors in the console when the dev server restarts under an open tab;
+  harmless.
+
+### Human tasks (P1)
+6. **Correct the footpath graph in QGIS/JOSM (2–3 h).** `make graph-export`, open
+   `data/processed/footpath_graph.geojson`, and for the streets in the demo zone: delete
+   sidewalk edges where no footpath exists (or set `kind=road_shared`), move offset lines onto the
+   real footpath, add missing footpaths/crossings as new LineStrings with `kind` and `side`, set
+   `signal` true/false on crossings you know. Save as
+   `data/corrected/footpath_graph_corrected.geojson`, then
+   `make graph-import FILE=data/corrected/footpath_graph_corrected.geojson && make seed`.
+   The validation report must still say one main component.
+
+---
+
+## Phase P2 — Ingest & capture
 _Not started. Waiting for "go"._

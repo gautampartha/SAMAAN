@@ -40,6 +40,10 @@ class FootpathEdge(SQLModel, table=True):
     side: str = "none"  # L | R | none
     parent_road_osm_id: int | None = None
     kind: str  # sidewalk | footway | crossing | steps | pedestrian | road_shared
+    synthesized: bool = False  # True for offset sidewalks / crossings we generated (P1)
+    signal: bool | None = None  # crossings: signalised? None = unknown
+    kerb_ramp_start: bool | None = None  # crossings: kerb ramp at the u end? None = unknown
+    kerb_ramp_end: bool | None = None
     highway: str | None = None
     osm_tags: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     width_m: float | None = None

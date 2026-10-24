@@ -27,6 +27,16 @@ from common.crs import METRIC, to_wgs84
 from common.paths import ROOT
 
 log = logging.getLogger(__name__)
+
+# Tags we need on ways and nodes (plan 6.1 step 1). Set before any graph_from_xml call.
+WAY_TAGS = ["highway", "name", "oneway", "lanes", "width", "sidewalk", "sidewalk:left", "sidewalk:right",
+            "sidewalk:both", "kerb", "crossing", "wheelchair", "surface", "smoothness", "lit", "footway",
+            "step_count", "ramp", "ramp:wheelchair", "incline", "handrail", "tactile_paving", "service",
+            "foot", "area", "access", "bridge", "tunnel", "layer", "maxspeed", "junction"]
+NODE_TAGS = ["ref", "highway", "crossing", "kerb", "tactile_paving", "crossing:signals", "traffic_signals",
+             "wheelchair", "railway", "entrance"]
+ox.settings.useful_tags_way = sorted(set(ox.settings.useful_tags_way) | set(WAY_TAGS))
+ox.settings.useful_tags_node = sorted(set(ox.settings.useful_tags_node) | set(NODE_TAGS))
 USER_AGENT = "SAMAAN-hackathon/0.0.1 (accessible routing research; SC-02)"
 
 # osmnx "walk" filter, replicated because graph_from_xml takes no network_type.
@@ -110,10 +120,11 @@ def write_graph(G_proj: nx.MultiGraph, session: Session, synthetic: bool = False
     node_ids: dict[int, int] = {}
     for n, d in G_proj.nodes(data=True):
         lon, lat = to_wgs84(Point(d["x"], d["y"])).coords[0]
+        osm_id = d.get("osm_id", n if isinstance(n, int) and "kind" not in d else None)
         row = FootpathNode(
-            osm_id=int(n) if isinstance(n, (int,)) else None,
+            osm_id=int(osm_id) if isinstance(osm_id, int) else None,
             lat=float(lat), lon=float(lon), x=float(d["x"]), y=float(d["y"]),
-            kind="junction",
+            kind=str(d.get("kind", "junction")),
         )
         session.add(row)
         session.flush()
@@ -124,19 +135,30 @@ def write_graph(G_proj: nx.MultiGraph, session: Session, synthetic: bool = False
             geom_m = LineString([(G_proj.nodes[u]["x"], G_proj.nodes[u]["y"]),
                                  (G_proj.nodes[v]["x"], G_proj.nodes[v]["y"])])
         geom_ll = to_wgs84(geom_m)
-        tags = {key: _scalar(val) for key, val in d.items()
-                if key not in ("geometry", "length", "osmid") and isinstance(_scalar(val), (str, int, float, bool))}
-        osmid = _scalar(d.get("osmid"))
+        if "osm_tags" in d:  # synthesised graph (P1): attributes are explicit
+            tags = dict(d["osm_tags"])
+            kind = d["kind"]
+            parent = d.get("parent_road_osm_id")
+        else:  # raw OSM way graph (P0 / tests)
+            tags = {key: _scalar(val) for key, val in d.items()
+                    if key not in ("geometry", "length", "osmid") and isinstance(_scalar(val), (str, int, float, bool))}
+            kind = kind_for(d)
+            osmid = _scalar(d.get("osmid"))
+            parent = int(osmid) if isinstance(osmid, int) else None
         session.add(FootpathEdge(
             u=node_ids[u], v=node_ids[v],
             geom_wkt=geom_ll.wkt, geom_m_wkt=geom_m.wkt,
             length_m=float(d.get("length", geom_m.length)),
-            side="none",
-            parent_road_osm_id=int(osmid) if isinstance(osmid, int) else None,
-            kind=kind_for(d),
-            highway=_scalar(d.get("highway")),
+            side=str(d.get("side", "none")),
+            parent_road_osm_id=int(parent) if isinstance(parent, int) else None,
+            kind=kind,
+            highway=_scalar(d.get("highway", tags.get("highway"))),
             osm_tags=tags,
-            width_m=_to_float(_scalar(d.get("width"))),
+            width_m=_to_float(tags.get("width")),
+            synthesized=bool(d.get("synthesized", False)),
+            signal=d.get("signal"),
+            kerb_ramp_start=d.get("kerb_ramp_start"),
+            kerb_ramp_end=d.get("kerb_ramp_end"),
             state="unknown",
             synthetic=synthetic,
         ))
@@ -149,6 +171,26 @@ def _to_float(v: Any) -> float | None:
         return float(v) if v is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def crossing_nodes(xml_path: Path, zone_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """OSM nodes tagged highway=crossing (or traffic_signals with crossing=*) inside the bbox,
+    with metric coordinates and their tags."""
+    from common.crs import lonlat_to_xy
+
+    b = zone_cfg["bbox"]
+    out: list[dict[str, Any]] = []
+    for _, el in ET.iterparse(xml_path, events=("end",)):
+        if el.tag != "node":
+            continue
+        tags = {t.get("k"): t.get("v") for t in el.findall("tag")}
+        if tags.get("highway") == "crossing" or (tags.get("highway") == "traffic_signals" and "crossing" in tags):
+            lat, lon = float(el.get("lat")), float(el.get("lon"))
+            if b["south"] <= lat <= b["north"] and b["west"] <= lon <= b["east"]:
+                x, y = lonlat_to_xy(lon, lat)
+                out.append({"id": int(el.get("id")), "x": x, "y": y, "lat": lat, "lon": lon, "tags": tags})
+        el.clear()
+    return out
 
 
 def discover_anchors(xml_path: Path, zone_cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -230,21 +272,37 @@ def load_nx_from_db(session: Session) -> nx.Graph:
     return G
 
 
-def build_zone_graph(zone_cfg: dict[str, Any], session: Session, force_download: bool = False) -> nx.MultiGraph:
-    """Full P0 graph build: download (cached) -> walk graph -> project -> DB."""
+def build_zone_graph(zone_cfg: dict[str, Any], session: Session, force_download: bool = False,
+                     synthesis_cfg: dict[str, Any] | None = None) -> nx.MultiGraph:
+    """Full graph build: download (cached) -> walkable OSM ways -> project -> synthesise footpaths
+    (plan 6.1) -> DB. Returns the footpath MultiGraph F."""
+    from common import config
+    from pipeline.graph.synthesize import synthesize
+
+    synthesis_cfg = synthesis_cfg or config.pipeline()["footpath_synthesis"]
     xml_path = fetch_osm_xml(zone_cfg, force=force_download)
     G = load_walk_graph(xml_path)
     G_proj = ox.project_graph(G, to_crs=METRIC)
     G_und = ox.convert.to_undirected(G_proj)  # one edge per segment; walking is bidirectional
-    write_graph(G_und, session, synthetic=False)
-    anchors = list(zone_cfg.get("anchors", [])) + discover_anchors(xml_path, zone_cfg)
-    write_anchors(anchors, session)
+    F, stats = synthesize(G_und, crossing_nodes(xml_path, zone_cfg), synthesis_cfg)
+    write_graph(F, session, synthetic=False)
+    write_zone_anchors(xml_path, zone_cfg, session)
     write_meta(
         session,
         osm_attribution=zone_cfg["osm"]["attribution"],
         osm_source=f"{zone_cfg['osm']['osm_api_url']} bbox={zone_cfg['bbox']}",
         osm_fetched_at=datetime.fromtimestamp(xml_path.stat().st_mtime, tz=UTC).isoformat(),
         crs_metric=METRIC,
+        graph_source="synthesised from OSM (pipeline.graph.synthesize)",
         graph_built_at=datetime.now(UTC).isoformat(),
+        synthesis_stats=str(stats),
     )
-    return G_und
+    return F
+
+
+def write_zone_anchors(xml_path: Path | None, zone_cfg: dict[str, Any], session: Session) -> None:
+    """Config anchors + anchors discovered in the cached OSM XML, snapped to graph nodes."""
+    anchors = list(zone_cfg.get("anchors", []))
+    if xml_path is not None and xml_path.exists():
+        anchors += discover_anchors(xml_path, zone_cfg)
+    write_anchors(anchors, session)

@@ -30,6 +30,9 @@ def footpaths(session: Session = Depends(get_session)) -> dict[str, Any]:
     feats = [feature(e.geom_wkt, {
         "id": e.id, "kind": e.kind, "state": e.state, "state_confidence": e.state_confidence,
         "length_m": round(e.length_m, 1), "side": e.side, "highway": e.highway,
+        "synthesized": e.synthesized, "signal": e.signal,
+        "kerb_ramp_start": e.kerb_ramp_start, "kerb_ramp_end": e.kerb_ramp_end,
+        "parent_road_osm_id": e.parent_road_osm_id, "corner": bool(e.osm_tags.get("corner")),
         "last_observed_at": _iso(e.last_observed_at), "observed_by": e.observed_by,
         "synthetic": bool(e.synthetic or e.state_synthetic),
     }, fid=e.id) for e in rows]

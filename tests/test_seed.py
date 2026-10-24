@@ -9,13 +9,16 @@ from tests.conftest import GRID_N, NOW
 
 def test_toy_graph_written(db_session):
     edges = db_session.exec(select(FootpathEdge)).all()
-    # 5x5 grid: 4*5 horizontal + 4*5 vertical segments, undirected
-    assert len(edges) == 2 * (GRID_N - 1) * GRID_N
+    # 5x5 road grid -> synthesised sidewalks (2 per road segment) + crossings + corners
+    n_roads = 2 * (GRID_N - 1) * GRID_N
+    kinds = {e.kind for e in edges}
+    assert kinds <= {"sidewalk", "crossing", "connector"}
+    assert sum(1 for e in edges if e.kind == "sidewalk" and not e.osm_tags.get("corner")) == 2 * n_roads
+    assert all(e.synthesized for e in edges)
     for e in edges:
-        assert abs(e.length_m - 100.0) < 1e-6
         g = wkt.loads(e.geom_m_wkt)
-        assert abs(g.length - 100.0) < 1e-6
-        assert e.kind in ("road_shared", "footway")
+        assert e.length_m > 0 and abs(g.length - e.length_m) < 1e-6
+        assert e.side in ("L", "R", "none")
 
 
 def test_everything_seeded_is_flagged_synthetic(db_session):

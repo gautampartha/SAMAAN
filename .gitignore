@@ -24,3 +24,5 @@ web/.vite/
 .DS_Store
 .idea/
 .vscode/
+data/processed/*.geojson
+data/processed/graph_validation.md
