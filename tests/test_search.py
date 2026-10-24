@@ -57,7 +57,9 @@ def test_search_ranks_and_localises(client):
     assert any(x["kind"] == "street" and x["subtitle_hi"] == "सड़क" for x in r["results"])
     r = client.get("/search", params={"q": "metro"}).json()
     assert r["results"][0]["kind"] == "anchor" and r["results"][0]["id"] == "anchor:metro_karkarduma"
-    r = client.get("/search", params={"q": "friend"}).json()
+    from common import config as _cfg
+    demo_word = _cfg.zone()["demo"]["riya"]["destination_label"]["en"].split()[0].lower()
+    r = client.get("/search", params={"q": demo_word}).json()
     assert r["results"][0]["kind"] == "demo" and r["results"][0]["synthetic"] is True
     assert client.get("/search", params={"q": ""}).json()["results"] == []
     assert client.get("/search", params={"q": "zzzz"}).json()["results"] == []

@@ -1,23 +1,24 @@
 # SAMAAN demo zone. All metric geometry is computed in `crs.metric` (EPSG:32643, UTM 43N).
 # Sources are recorded per value. Nothing here is a measured result.
-name: karkarduma
+name: muj
 display_name:
-  en: "Karkarduma Metro, East Delhi"
-  hi: "कड़कड़डूमा मेट्रो, पूर्वी दिल्ली"
+  en: "Manipal University Jaipur campus"
+  hi: "मणिपाल विश्वविद्यालय जयपुर परिसर"
 
 crs:
   geographic: "EPSG:4326"
-  metric: "EPSG:32643"   # UTM zone 43N - covers Delhi
+  metric: "EPSG:32643"   # UTM zone 43N - covers Jaipur (72-78 E) and Delhi
 
-# ~1.2 km square centred on Karkarduma metro. Confirmed by the team on 2026-10-24.
+# ~1.7 x 1.8 km around the Manipal University Jaipur campus (hackathon venue), set 2026-10-24.
+# Previous zone (Karkarduma metro, East Delhi): south 28.6430, west 77.2993, north 28.6538, east 77.3115.
 bbox:
-  south: 28.6430
-  west: 77.2993
-  north: 28.6538
-  east: 77.3115
+  south: 26.8355
+  west: 75.5565
+  north: 26.8505
+  east: 75.5745
 center:
-  lat: 28.6484
-  lon: 77.3054
+  lat: 26.8429
+  lon: 75.5654
 
 osm:
   # Overpass is blocked on the build machine's network, so the zone is fetched as raw
@@ -25,7 +26,7 @@ osm:
   source: osm_api
   osm_api_url: "https://api.openstreetmap.org/api/0.6/map"
   overpass_url: "https://overpass-api.de/api/interpreter"   # fallback, if reachable
-  raw_cache: "data/raw/karkarduma.osm"
+  raw_cache: "data/raw/muj.osm"
   attribution: "© OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)"
   # P0 graph: walkable OSM ways (network_type=walk). P1 replaces this with synthesised
   # left/right sidewalks + crossings (plan section 6.1).
@@ -40,20 +41,30 @@ basemap:
 # (confirm exit positions on site). Extra metro entrances found in OSM
 # (railway=subway_entrance / entrance=* within the bbox) are added automatically.
 anchors:
-  - id: metro_karkarduma
-    kind: metro
+  - id: muj_campus
+    kind: metro   # 'arrival point' role: campus entrance / main gate (kind kept for the UI's icon set)
     name:
-      en: "Karkarduma Metro Station"
-      hi: "कड़कड़डूमा मेट्रो स्टेशन"
-    lat: 28.6483664
-    lon: 77.3054302
-    source: "Nominatim lookup 2026-10-24 (Blue Line station node)"
+      en: "MUJ main entrance"
+      hi: "MUJ मुख्य प्रवेश द्वार"
+    lat: 26.8423537
+    lon: 75.5617643
+    source: "Nominatim 2026-10-24 (campus entrance node 'Subway Stairs'); verify on site"
+    verified: false
+  - id: muj_centre
+    kind: school
+    name:
+      en: "MUJ academic centre"
+      hi: "MUJ शैक्षणिक केंद्र"
+    lat: 26.8429063
+    lon: 75.5654289
+    source: "Nominatim 2026-10-24 (campus centroid); verify on site"
     verified: false
 
 anchor_discovery:
   enabled: true
   osm_tags:
     - { key: railway, value: subway_entrance, kind: metro }
+    - { key: entrance, value: main, kind: metro }
     - { key: highway, value: bus_stop, kind: bus_stop }
     - { key: amenity, value: hospital, kind: hospital }
     - { key: amenity, value: school, kind: school }
@@ -62,13 +73,13 @@ anchor_discovery:
 demo:
   riya:
     synthetic: true
-    origin_anchor: metro_karkarduma
+    origin_anchor: muj_campus
     # Destination is a real OSM node chosen at seed time ~800 m walking from the origin.
     target_network_distance_m: 800
     target_tolerance_m: 100
     destination_label:
-      en: "Friend's house (demo)"
-      hi: "दोस्त का घर (डेमो)"
+      en: "Lecture hall (demo)"
+      hi: "व्याख्यान कक्ष (डेमो)"
     # Barriers placed on the shortest walking path, in order from the origin.
     barriers:
       - { class: steps_or_high_kerb, severity: 4, tags: [steps, two_steps], permanent: true }

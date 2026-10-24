@@ -12,7 +12,7 @@ def test_round_trip_centre():
     lon, lat = xy_to_lonlat(x, y)
     assert abs(lon - c["lon"]) < 1e-7 and abs(lat - c["lat"]) < 1e-7
     assert 100_000 < x < 900_000  # inside a UTM zone's easting range
-    assert 3_100_000 < y < 3_200_000  # ~28.65 N northing
+    assert abs(y - c["lat"] * 110_574) < 25_000  # northing ~ latitude x metres per degree (within 25 km)
 
 
 def test_one_degree_longitude_is_about_97_7_m_per_milli_degree():

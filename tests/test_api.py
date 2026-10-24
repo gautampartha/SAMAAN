@@ -33,7 +33,8 @@ def test_health(client):
 
 def test_zone(client):
     z = client.get("/zone").json()
-    assert z["name"] == "karkarduma"
+    from common import config as _cfg
+    assert z["name"] == _cfg.zone()["name"]
     assert set(z["bbox"]) == {"south", "west", "north", "east"}
     assert z["display_name"]["hi"] and z["display_name"]["en"]
     assert z["basemap"]["style_url"].startswith("https://")
@@ -57,7 +58,9 @@ def test_barriers_layer(client, db_session):
         assert key in f
     assert all(f["properties"]["synthetic"] for f in fc["features"])
     lon, lat = fc["features"][0]["geometry"]["coordinates"]
-    assert 77 < lon < 78 and 28 < lat < 29
+    from common import config as _cfg
+    b = _cfg.zone()["bbox"]
+    assert b["west"] - 0.01 < lon < b["east"] + 0.01 and b["south"] - 0.01 < lat < b["north"] + 0.01
 
 
 def test_coverage_layer(client):

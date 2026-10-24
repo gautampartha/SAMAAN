@@ -49,6 +49,7 @@ def toy_zone_cfg() -> dict:
     cfg["anchors"] = [{"id": "metro_karkarduma", "kind": "metro", "name": {"en": "Toy metro", "hi": "टॉय मेट्रो"},
                        "lat": lat, "lon": lon, "source": "test", "verified": False}]
     cfg["anchor_discovery"] = {"enabled": False}
+    cfg["demo"]["riya"]["origin_anchor"] = cfg["anchors"][0]["id"]  # the toy anchor, whatever the real zone uses
     cfg["demo"]["riya"]["target_network_distance_m"] = 300
     cfg["demo"]["riya"]["target_tolerance_m"] = 50
     return cfg
