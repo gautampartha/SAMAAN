@@ -101,7 +101,11 @@ async def create_report(
                               hfov_deg=hfov_deg, captured_at=cap, device_lat=device_lat, device_lon=device_lon, image_w=width, image_h=height)
     except svc.ReportError as exc:
         _raise(exc)
-    return svc.report_item(session, r, viewer_id=user_id)
+    if r.status == "verified":  # auto-verified on submission: routes must reflect it now
+        _refresh(request, session)
+    item = svc.report_item(session, r, viewer_id=user_id)
+    item["auto_verified"] = r.status == "verified"
+    return item
 
 
 @router.get("/reports")

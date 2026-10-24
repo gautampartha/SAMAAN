@@ -163,6 +163,14 @@ def create_report(session: Session, *, user_id: int, class_id: str, severity: in
         dup = find_duplicate(session, class_id, lat, lon, float(cfg["duplicate_distance_m"]))
         report.duplicate_of_barrier_id = dup.id if dup else None
     session.add(report)
+    session.flush()
+    # Phase 2 "update within a minute": a trusted reporter with a photo needs no second voter.
+    auto = float(cfg["trust"].get("auto_verify_trust", 1.01))
+    if img is not None and user.trust_score >= auto:
+        report.score = round(user.trust_score, 3)
+        resolve(session, report, "verified", [], {user.id: user}, now)
+        report.sources_note = "auto-verified: trusted reporter with photo"
+    session.add(report)
     session.commit()
     session.refresh(report)
     return report

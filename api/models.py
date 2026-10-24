@@ -206,6 +206,7 @@ class Report(SQLModel, table=True):
     barrier_id: int | None = None
     score: float = 0.0
     n_votes: int = 0
+    sources_note: str | None = None  # e.g. auto-verified
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     resolved_at: datetime | None = None
     synthetic: bool = False

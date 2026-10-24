@@ -151,6 +151,7 @@ reports:                     # plan 6.8. team_estimate unless noted
   trust:
     initial: 0.3
     team_initial: 0.8           # users created with team=true (the demo crew) verify alone
+    auto_verify_trust: 0.8      # a reporter at or above this trust WITH a photo is verified on submission (< 1 minute)
     min: 0.05
     max: 1.0
     reporter_verified_gain: 0.1

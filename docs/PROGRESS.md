@@ -961,8 +961,16 @@ Decisions:
   images of the campus (2017): 3 detections → 2 real `parked_vehicle` barriers after side-aware
   snapping. Limits are written in the config: it cannot see steps, drains, kerbs or surfaces, and
   a moving vehicle looks like a parked one in a single frame.
-- Tests: 119 passing (steps on a toy corner + crossing, confidence fresh vs stale, two-route
-  contract, profiles endpoint).
+- **Any area on demand** (`POST /zones/rebuild {name, bbox, anchors}` → background build into
+  `data/processed/zone_<name>.sqlite`, `GET /zones/status`, `POST /zones/reset`): the whole app
+  follows the new area via `active_zone.json`. Live: central Jaipur (1.3 km box) built in 6 s,
+  2973 edges; routes came back with honest "low confidence, 100 % unknown, 0 barriers". This is
+  the answer to "it must work anywhere": no exploration phase, just honesty about what is unseen.
+- **Within a minute**: a reporter with trust ≥ 0.8 (team users) and a photo is verified on
+  submission; the barrier, states and routing context update before the response returns.
+  Reports without a photo, or from new users, still go through validation.
+- Tests: 122 passing (steps on a toy corner + crossing, confidence fresh vs stale, two-route
+  contract, profiles endpoint, zone override + rebuild validation, auto-verify).
 
 ## Phase P10 — Eval, demo, polish
 _Rescoped after the pivot; starts after the pivot work._

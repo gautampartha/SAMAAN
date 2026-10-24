@@ -206,3 +206,28 @@ def test_active_learning_export(client, api_db, tmp_path, monkeypatch):
     assert labels and labels[0].read_text().startswith("1 0.5")  # steps_or_high_kerb index 1, centred weak box
     manifest = (out / "manifest.csv").read_text()
     assert "needs_box_review" in manifest and ",true" in manifest and "synthetic" in manifest
+
+
+def test_trusted_reporter_with_photo_is_verified_immediately(client, api_db):
+    crew = client.post("/users", json={"display_name": "crew2", "profile": "walker", "team": True}).json()
+    z = client.get("/zone").json()["center"]
+    # pick a clear sidewalk edge midpoint far from existing barriers
+    with Session(get_engine(api_db)) as s:
+        from shapely import wkt
+
+        from common.crs import to_wgs84
+        e = next(e for e in s.exec(select(FootpathEdge)).all() if e.kind == "sidewalk" and e.state == "clear" and e.length_m > 50)
+        pt = to_wgs84(wkt.loads(e.geom_m_wkt).interpolate(0.3, normalized=True))
+    r = client.post("/reports", files={"photo": ("p.jpg", TINY_JPEG, "image/jpeg")},
+                    data={"user_id": crew["id"], "class_id": "open_drain", "severity": 5, "lat": pt.y, "lon": pt.x,
+                          "device_lat": pt.y, "device_lon": pt.x, "width": 1, "height": 1})
+    assert r.status_code == 201, r.text
+    item = r.json()
+    assert item["status"] == "verified" and item["auto_verified"] is True and item["barrier_id"]
+    with Session(get_engine(api_db)) as s:
+        b = s.get(Barrier, item["barrier_id"])
+        assert b.status == "active" and b.class_id == "open_drain" and not b.synthetic
+        assert s.get(FootpathEdge, b.edge_id).state == "blocked"
+    # without a photo, even a trusted user stays pending (photo is the evidence)
+    r2 = client.post("/reports", data={"user_id": crew["id"], "class_id": "open_drain", "severity": 5, "lat": z["lat"], "lon": z["lon"]}).json()
+    assert r2["status"] == "pending" and r2["auto_verified"] is False
