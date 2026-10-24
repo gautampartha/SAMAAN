@@ -97,8 +97,16 @@ function recognitionCtor(): RecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+/** Running inside the native Capacitor shell (iOS/Android app) rather than a browser. */
+export function isNativeApp(): boolean {
+  const w = window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } };
+  return typeof w.Capacitor?.isNativePlatform === 'function' && w.Capacitor.isNativePlatform();
+}
+
 export function sttSupported(): boolean {
-  return recognitionCtor() !== null;
+  // WKWebView has no SpeechRecognition; the native shell provides it through the
+  // @capacitor-community/speech-recognition plugin (Apple Speech framework).
+  return isNativeApp() || recognitionCtor() !== null;
 }
 
 export type RecognitionErrorKind = 'denied' | 'no-speech' | 'network' | 'aborted' | 'other';
@@ -128,8 +136,64 @@ function classify(err: string): RecognitionErrorKind {
   return 'other';
 }
 
+/** Native one-shot recogniser (Capacitor shell): Apple Speech on iOS. Same handler contract. */
+function createNativeRecognizer(lang: Lang, handlers: RecognizerHandlers): Recognizer {
+  let disposed = false;
+  let busy = false;
+  const run = async () => {
+    if (disposed || busy) return;
+    busy = true;
+    try {
+      const { SpeechRecognition } = await import('@capacitor-community/speech-recognition');
+      const avail = await SpeechRecognition.available();
+      if (!avail.available) {
+        handlers.onError?.('other');
+        return;
+      }
+      const perm = await SpeechRecognition.requestPermissions();
+      if (perm.speechRecognition !== 'granted') {
+        handlers.onError?.('denied');
+        return;
+      }
+      handlers.onStart?.();
+      const partial = await SpeechRecognition.addListener('partialResults', (ev: { matches?: string[] }) => {
+        if (!disposed && ev.matches?.length) handlers.onInterim?.(ev.matches[0].trim());
+      });
+      try {
+        const res = await SpeechRecognition.start({ language: SPEECH_LANG[lang], maxResults: 1, partialResults: true, popup: false });
+        const text = (res?.matches?.[0] ?? '').trim().toLowerCase();
+        if (!disposed) {
+          if (text) handlers.onResult(text);
+          else handlers.onError?.('no-speech');
+        }
+      } finally {
+        await partial.remove();
+      }
+    } catch (err) {
+      if (!disposed) handlers.onError?.(classify(String((err as Error)?.message ?? err)));
+    } finally {
+      busy = false;
+      if (!disposed) handlers.onEnd?.();
+    }
+  };
+  const stop = () => {
+    void import('@capacitor-community/speech-recognition').then(({ SpeechRecognition }) => SpeechRecognition.stop()).catch(() => undefined);
+  };
+  return {
+    start: () => {
+      void run();
+    },
+    stop,
+    dispose: () => {
+      disposed = true;
+      stop();
+    },
+  };
+}
+
 /** One-shot recogniser: listens for a single utterance, then ends. Call `start()` again for the next one. */
 export function createRecognizer(lang: Lang, handlers: RecognizerHandlers): Recognizer | null {
+  if (isNativeApp()) return createNativeRecognizer(lang, handlers);
   const Ctor = recognitionCtor();
   if (!Ctor) return null;
   let rec: Recognition | null = null;

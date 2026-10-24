@@ -36,7 +36,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SAMAAN API", version="0.0.1", lifespan=lifespan)
 
-_origins = os.environ.get("SAMAAN_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+# Vite dev server plus the native shells' WebView origins (Capacitor iOS/Android).
+_origins = os.environ.get("SAMAAN_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,capacitor://localhost,"
+                          "ionic://localhost,http://localhost").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in _origins], allow_methods=["*"],
                    allow_headers=["*"])
 app.include_router(layers.router)

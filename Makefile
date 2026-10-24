@@ -4,7 +4,7 @@ PY      := .venv/bin/python
 UV      := uv
 DB      := data/processed/samaan.sqlite
 
-.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval missions export-active ride-calibration infer-zero-shot api test lint web web-install clean-db help
+.PHONY: setup seed graph api-lan ios ios-sync graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval missions export-active ride-calibration infer-zero-shot api test lint web web-install clean-db help
 
 help:
 	@echo "make setup        create .venv (Python 3.11) and install deps"
@@ -91,8 +91,13 @@ export-active:
 ride-calibration:
 	$(PY) -m eval.ride_calibration
 
+HOST ?= 127.0.0.1
 api:
-	$(PY) -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+	$(PY) -m uvicorn api.main:app --host $(HOST) --port 8000 --reload
+
+# For phones on the same Wi-Fi (native app / LAN demo): make api-lan  (binds all interfaces)
+api-lan:
+	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 
 test:
 	$(PY) -m pytest
@@ -105,6 +110,15 @@ web-install:
 
 web:
 	cd web && npm run dev
+
+# Native iOS shell (Capacitor). API_URL defaults to this laptop's Wi-Fi address on port 8000.
+API_URL ?= http://$(shell ipconfig getifaddr en0 2>/dev/null || echo 127.0.0.1):8000
+ios-sync:
+	cd web && VITE_API_URL=$(API_URL) npm run build && npx cap sync ios
+	@echo "built web with VITE_API_URL=$(API_URL); open with: make ios"
+
+ios: ios-sync
+	cd web && npx cap open ios
 
 clean-db:
 	rm -f $(DB)
