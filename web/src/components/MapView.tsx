@@ -1568,6 +1568,7 @@ export default function MapView({
     let raf = 0;
     const start = performance.now();
     const tick = (now: number) => {
+      if (mapRef.current !== map) return;
       const p = Math.min(1, (now - start) / SIM_GROW_MS);
       const eased = 1 - (1 - p) * (1 - p);
       if (map.getLayer('reach-simulated-fill')) {
@@ -1612,6 +1613,7 @@ export default function MapView({
     let raf = 0;
     const start = performance.now();
     const tick = (now: number) => {
+      if (mapRef.current !== map) return; // the map was removed (StrictMode re-mount, page change)
       const phase = ((now - start) % 1400) / 1400;
       const wave = (Math.sin(phase * Math.PI * 2) + 1) / 2;
       if (map.getLayer('route-barriers-ring')) {

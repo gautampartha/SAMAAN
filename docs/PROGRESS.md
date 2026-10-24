@@ -972,5 +972,32 @@ Decisions:
 - Tests: 122 passing (steps on a toy corner + crossing, confidence fresh vs stale, two-route
   contract, profiles endpoint, zone override + rebuild validation, auto-verify).
 
+### Pivot work done (web, phone-first)
+- New shell in the reference style (off-white, white cards, blue #1561F1, black turn banner,
+  system font): status strip, bottom tab bar Home / Navigate / Contribute / More; the old pages
+  (Validate, Missions, Reach Gap, Ride, Capture, Statistics, Settings) live under More.
+- **Home**: greeting, "Where to?" search, Pick on map, origin = GPS, the three mode cards Move /
+  Explore / Listen (choosing a mode selects the matching profile and vice versa), "Try the demo
+  trip".
+- **Route choice (Move)**: two cards, Standard vs SAMAAN (Recommended), minutes, km, a confidence
+  ring with the label, barriers (impassable count), "x % checked · n segments without recent
+  imagery"; tap to preview; Start.
+- **Navigation**: black banner (arrow glyph, distance, instruction, street), warning chips,
+  map following the position with a blue dot, round buttons (voice, report, end), bottom sheet
+  arrival · min · m with a progress bar; "Simulate walk" (1 m/s, ×5/×20) when GPS is unavailable,
+  clearly labelled; arrival summary; optional photo contribution every 10 m from real GPS only.
+- **Explore**: full-screen camera (map fallback), one big arrow rotated to the next step, a step
+  pictogram, ≤ 4 words, big distance, calm palette, Simplify toggle.
+- **Listen**: one giant button, speech synthesis in hi-IN / en-IN, speech recognition for the
+  destination with read-back and "yes" confirmation, commands repeat / where am I / stop, every
+  step and warning spoken, confidence announced once; text fallback when speech is unavailable.
+- Contribute tab (consent toggle + links), Statistics 2×2, Settings (profile, risk, language,
+  contrast, user). 734 en/hi keys with parity.
+- Verified live against the API at 390×844: Home → demo trip → two cards (88 % / 91 % high) →
+  Start → banner "70 m Turn right" → simulated walk counts down and the dot moves; no console
+  errors. Not verifiable in the desktop pane: real GPS, compass arrow, camera, microphone.
+- Hindi to review: mode names are transliterations (मूव / एक्सप्लोर / लिसन), "भरोसा"
+  (confidence), "नकली चाल" (simulated walk), "हल्का/तीखा बाएँ-दाएँ", profile names.
+
 ## Phase P10 — Eval, demo, polish
 _Rescoped after the pivot; starts after the pivot work._

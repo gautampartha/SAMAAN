@@ -3,39 +3,55 @@ import { useTranslation } from 'react-i18next';
 import {
   api,
   LAYER_KEYS,
+  type AppMode,
   type BarrierFeature,
   type LayerData,
   type LayerKey,
   type MissionFeature,
+  type Profile,
   type ReachFix,
   type ReportItem,
   type ReportPrefill,
   type ReportTarget,
   type RideSummary,
   type RouteBarrier,
+  type RouteMode,
+  type RouteResult,
   type WheelsJoltFeature,
   type Zone,
 } from './api';
 import { toLang, type Lang } from './i18n';
-import Header from './components/Header';
+import { StatusStrip, TabBar } from './components/Shell';
 import Legend from './components/Legend';
 import BarrierList from './components/BarrierList';
 import MapView, { type BarrierSelection } from './components/MapView';
 import CapturePage from './components/CapturePage';
-import RoutePlanner from './components/RoutePlanner';
-import RouteCompare from './components/RouteCompare';
+import HomeSheet, { type GoError } from './components/HomeSheet';
+import RouteChoice from './components/RouteChoice';
+import NavigationScreen from './components/NavigationScreen';
+import ExploreScreen from './components/ExploreScreen';
+import ListenScreen from './components/ListenScreen';
+import ContributePage from './components/ContributePage';
+import StatsPage from './components/StatsPage';
+import SettingsPage from './components/SettingsPage';
+import MorePage from './components/MorePage';
 import ReportSheet, { type ReportMode } from './components/ReportSheet';
 import ValidatePage from './components/ValidatePage';
 import MissionsPage from './components/MissionsPage';
 import ReachPanel from './components/ReachPanel';
 import RidePage from './components/RidePage';
 import type { ReachFocus, WheelsFocus } from './components/MapView';
-import { navigate, useHashRoute, type Route } from './router';
-import { formatCoords, useRoutePlanner, type PointRole } from './routePlanner';
+import { MAP_ROUTES, navigate, useHashRoute, type Route } from './router';
+import { formatCoords, useRoutePlanner, type PlannerPoint, type PointRole } from './routePlanner';
 import { useReachGap } from './reach';
+import { useSensors } from './sensors';
+import { useNavigation } from './navigation';
+import { setContribute, setMode, useContribute, useMode } from './mode';
+import { stopSpeaking } from './speech';
 
 type Theme = 'auto' | 'normal' | 'high-contrast';
 const THEME_STORAGE_KEY = 'samaan.theme';
+const MUTED_KEY = 'samaan.muted';
 
 type LoadStatus = 'loading' | 'ok' | 'partial' | 'error';
 
@@ -49,12 +65,16 @@ function readStoredTheme(): Theme {
   return 'auto';
 }
 
-function systemPrefersHighContrast(): boolean {
-  return window.matchMedia('(prefers-contrast: more)').matches;
+function readMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTED_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
-function isNarrow(): boolean {
-  return window.matchMedia('(max-width: 767px)').matches;
+function systemPrefersHighContrast(): boolean {
+  return window.matchMedia('(prefers-contrast: more)').matches;
 }
 
 /**
@@ -82,15 +102,18 @@ const DEFAULT_VISIBLE: Record<LayerKey, boolean> = {
   barriers: true,
   coverage: false,
   anchors: true,
-  demo: true,
+  demo: false,
   images: false,
   wheels: false,
 };
+
+type OriginResult = PlannerPoint | 'geoDenied' | 'geoUnavailable';
 
 export default function App() {
   const { t, i18n } = useTranslation();
   const lang: Lang = toLang(i18n.language);
   const route = useHashRoute();
+  const isMapRoute = (MAP_ROUTES as readonly string[]).includes(route);
 
   const [zone, setZone] = useState<Zone | null>(null);
   const [zoneSettled, setZoneSettled] = useState(false);
@@ -102,7 +125,7 @@ export default function App() {
 
   const [visible, setVisible] = useState<Record<LayerKey, boolean>>(DEFAULT_VISIBLE);
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
-  const [legendOpen, setLegendOpen] = useState(() => !isNarrow());
+  const [legendOpen, setLegendOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [selection, setSelection] = useState<BarrierSelection | null>(null);
 
@@ -112,37 +135,50 @@ export default function App() {
   const [pendingReports, setPendingReports] = useState<ReportItem[]>([]);
   const [mission, setMission] = useState<MissionFeature | null>(null);
 
-  // ---- Route planner ----
+  // ---- Trip planner, modes, navigation engine ----
   const planner = useRoutePlanner();
-  const plannerOpen = planner.state.open;
   const pickMode = planner.state.pickMode;
-  // Stable actions (useCallback / setState inside the hook) for dependency lists.
-  const { setOpen: setPlannerOpen, setPoint: setPlannerPoint, setPickMode, select: selectRoute, rerun: rerunRoutes } = planner;
-  const plannerBtnRef = useRef<HTMLButtonElement>(null);
+  const { setPoint: setPlannerPoint, setPickMode, select: selectRoute, rerun: rerunRoutes } = planner;
+  const mode = useMode();
+  const contribute = useContribute();
+  const sensors = useSensors();
+  const nav = useNavigation(sensors);
+  const navSession = nav.state.session;
+  const [muted, setMuted] = useState(readMuted);
+  const [follow, setFollow] = useState(true);
+  const [autoStart, setAutoStart] = useState<AppMode | null>(null);
+  const [goBusy, setGoBusy] = useState(false);
+  const [goError, setGoError] = useState<GoError>(null);
+
   const legendBtnRef = useRef<HTMLButtonElement>(null);
   const listBtnRef = useRef<HTMLButtonElement>(null);
-  const plannerHeadingRef = useRef<HTMLHeadingElement>(null);
   const legendHeadingRef = useRef<HTMLHeadingElement>(null);
   const listHeadingRef = useRef<HTMLHeadingElement>(null);
-  usePanelFocus(plannerOpen, plannerHeadingRef, plannerBtnRef);
+  const homeHeadingRef = useRef<HTMLHeadingElement>(null);
+  const choiceHeadingRef = useRef<HTMLHeadingElement>(null);
+  const screenHeadingRef = useRef<HTMLElement>(null);
   usePanelFocus(legendOpen, legendHeadingRef, legendBtnRef);
   usePanelFocus(listOpen, listHeadingRef, listBtnRef);
 
-  // ---- Reach Gap page (uses the main map; a side panel / bottom sheet like the planner) ----
+  useEffect(() => {
+    try {
+      localStorage.setItem(MUTED_KEY, muted ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    if (muted) stopSpeaking();
+  }, [muted]);
+
+  // ---- Reach Gap page (uses the main map; a bottom sheet like the planner) ----
   const reach = useReachGap(route === 'reach');
   const reachHeadingRef = useRef<HTMLHeadingElement>(null);
-  const reachLinkRef = useRef<HTMLAnchorElement>(null);
   const [reachFocus, setReachFocus] = useState<ReachFocus | null>(null);
-  // Opening the page moves focus to its heading; Close / Escape go back to the map and return focus to the nav link.
   useEffect(() => {
     if (route !== 'reach') return;
     const id = window.setTimeout(() => reachHeadingRef.current?.focus(), 0);
     return () => window.clearTimeout(id);
   }, [route]);
-  const closeReach = useCallback(() => {
-    navigate('map');
-    window.setTimeout(() => reachLinkRef.current?.focus(), 0);
-  }, []);
+  const closeReach = useCallback(() => navigate('more'), []);
   const showReachBarrier = useCallback((fix: ReachFix) => {
     setReachFocus({ barrierId: fix.barrier.id, lat: fix.barrier.lat, lon: fix.barrier.lon, nonce: Date.now() });
   }, []);
@@ -197,19 +233,18 @@ export default function App() {
     return () => ac.abort();
   }, []);
 
-  // ---- Live update plumbing: reload footpaths + barriers (+ coverage / wheels when shown) after the server changed them. ----
+  // ---- Live update plumbing: reload footpaths + barriers (+ coverage / wheels) after the server changed them. ----
+  const [refreshing, setRefreshing] = useState(false);
   const coverageVisibleRef = useRef(visible.coverage);
   coverageVisibleRef.current = visible.coverage;
-  const wheelsVisibleRef = useRef(visible.wheels);
-  wheelsVisibleRef.current = visible.wheels;
   const refreshLayers = useCallback(async () => {
+    setRefreshing(true);
     const withCoverage = coverageVisibleRef.current;
-    const withWheels = wheelsVisibleRef.current;
     const [fp, ba, cov, wh] = await Promise.allSettled([
       api.footpaths(),
       api.barriers(),
       withCoverage ? api.coverage() : Promise.resolve(undefined),
-      withWheels ? api.wheels() : Promise.resolve(undefined),
+      api.wheels(),
     ]);
     setData((cur) => {
       const next: LayerData = { ...cur };
@@ -219,11 +254,11 @@ export default function App() {
       if (wh.status === 'fulfilled' && wh.value) next.wheels = wh.value;
       return next;
     });
-    // Reports that became barriers (or were rejected) are no longer pending.
     if (ba.status === 'fulfilled') {
       const known = new Set(ba.value.features.map((f) => f.properties.id));
       setPendingReports((list) => list.filter((r) => r.barrier_id === null || !known.has(r.barrier_id)));
     }
+    setRefreshing(false);
   }, []);
 
   /** A vote (or report) resolved server-side: reload the layers and re-run the last comparison. */
@@ -232,14 +267,27 @@ export default function App() {
     rerunRoutes();
   }, [refreshLayers, rerunRoutes]);
 
-  // Coming back to the map from Validate/Missions/Capture: others may have changed the map meanwhile.
+  // Coming back to the map from a page: others may have changed the map meanwhile.
   const prevRouteRef = useRef<Route | null>(null);
   useEffect(() => {
     const prev = prevRouteRef.current;
     prevRouteRef.current = route;
-    if (route === 'map' && prev !== null && prev !== 'map') void refreshLayers();
-    if (route !== 'map' && reportMode) setReportMode(null);
-    if (route !== 'map') setPickMode(null);
+    const wasMap = prev !== null && (MAP_ROUTES as readonly string[]).includes(prev);
+    if (isMapRoute && prev !== null && !wasMap) void refreshLayers();
+    if (!isMapRoute) setPickMode(null);
+    if (route !== 'map') {
+      setLegendOpen((o) => (route === 'reach' ? o : false));
+      setListOpen(false);
+    }
+    // Focus the sheet heading when arriving on Home / the route choice from another page.
+    if (prev !== null && prev !== route) {
+      const id = window.setTimeout(() => {
+        if (route === 'home') homeHeadingRef.current?.focus();
+        else if (route === 'navigate' && !navSession) (planner.state.result ? choiceHeadingRef : homeHeadingRef).current?.focus();
+      }, 0);
+      return () => window.clearTimeout(id);
+    }
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, refreshLayers]);
 
@@ -266,57 +314,27 @@ export default function App() {
     [i18n],
   );
 
-  // On phones the panels are bottom sheets, so only one is open at a time. The
-  // planner and the barrier list share the left column on desktop, so they are
-  // exclusive there too.
+  // Legend and barrier list are bottom sheets: only one open at a time.
   const toggleLegend = useCallback(() => {
     setLegendOpen((open) => {
-      if (!open && isNarrow()) {
-        setListOpen(false);
-        setPlannerOpen(false);
-      }
+      if (!open) setListOpen(false);
       return !open;
     });
-  }, [setPlannerOpen]);
+  }, []);
   const toggleList = useCallback(() => {
     setListOpen((open) => {
-      if (!open) {
-        setPlannerOpen(false);
-        if (isNarrow()) setLegendOpen(false);
-      }
+      if (!open) setLegendOpen(false);
       return !open;
     });
-  }, [setPlannerOpen]);
-  const togglePlanner = useCallback(() => {
-    const next = !plannerOpen;
-    setPlannerOpen(next);
-    if (next) {
-      setListOpen(false);
-      if (isNarrow()) setLegendOpen(false);
-    } else {
-      setPickMode(null);
-    }
-  }, [plannerOpen, setPlannerOpen, setPickMode]);
+  }, []);
 
   // A map pick sets the planner point and ends pick mode.
   const onPick = useCallback(
     (role: PointRole, lat: number, lon: number) => {
       setPlannerPoint(role, { lat, lon, label: formatCoords(lat, lon) });
-      // On a phone the sheet hides the map while picking; bring it back once the point is set.
-      if (isNarrow()) setPlannerOpen(true);
     },
-    [setPlannerPoint, setPlannerOpen],
+    [setPlannerPoint],
   );
-  // While picking on a phone, close the sheet so the map is tappable.
-  useEffect(() => {
-    if (pickMode && isNarrow()) setPlannerOpen(false);
-  }, [pickMode, setPlannerOpen]);
-
-  // When a comparison arrives, hide the static demo layer (its dashed purple line would be confused with SAMAAN's).
-  const result = planner.state.result;
-  useEffect(() => {
-    if (result) setVisible((v) => (v.demo ? { ...v, demo: false } : v));
-  }, [result]);
 
   const onPanelKeyDown = (close: () => void) => (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === 'Escape') {
@@ -332,7 +350,7 @@ export default function App() {
   const selectBarrier = useCallback((feature: BarrierFeature) => {
     setSelection({ feature, nonce: Date.now() });
     setVisible((v) => (v.barriers ? v : { ...v, barriers: true }));
-    if (isNarrow()) setListOpen(false);
+    setListOpen(false);
   }, []);
 
   // ---- Report sheet ----
@@ -355,11 +373,13 @@ export default function App() {
     (b: RouteBarrier) => reportFixed({ id: b.id, class_id: b.class, name_en: b.name_en, name_hi: b.name_hi, severity: b.severity }),
     [reportFixed],
   );
-  const onReportSubmitted = useCallback((rep: ReportItem) => {
-    if (rep.kind === 'barrier' && rep.status === 'pending') setPendingReports((list) => [...list, rep]);
-    // A report may resolve immediately (e.g. a trusted reporter): reload so the map/routes catch up.
-    if (rep.status !== 'pending') onResolved();
-  }, [onResolved]);
+  const onReportSubmitted = useCallback(
+    (rep: ReportItem) => {
+      if (rep.kind === 'barrier' && rep.status === 'pending') setPendingReports((list) => [...list, rep]);
+      if (rep.status !== 'pending') onResolved();
+    },
+    [onResolved],
+  );
 
   const showMission = useCallback((m: MissionFeature) => {
     setMission(m);
@@ -372,14 +392,7 @@ export default function App() {
     async (s: RideSummary) => {
       setVisible((v) => (v.wheels ? v : { ...v, wheels: true }));
       navigate('map');
-      // Footpaths/barriers changed server-side (verified states, suspected barriers); then the wheels layer itself.
       await refreshLayers();
-      try {
-        const w = await api.wheels();
-        setData((cur) => ({ ...cur, wheels: w }));
-      } catch (err) {
-        console.warn('[wheels]', err);
-      }
       setWheelsFocus({ kind: 'edges', edgeIds: s.verified_edge_ids, nonce: Date.now() });
     },
     [refreshLayers],
@@ -390,6 +403,122 @@ export default function App() {
     navigate('map');
   }, []);
   const photographJolt = useCallback((prefill: ReportPrefill) => openReport({ kind: 'barrier', prefill }), [openReport]);
+
+  // ---- Mode <-> profile coupling ----
+  const profiles = planner.state.profiles;
+  const chooseMode = useCallback(
+    (m: AppMode) => {
+      setMode(m);
+      const current = profiles.find((p) => p.id === planner.state.profile);
+      if (!current || current.mode !== m) {
+        const match = profiles.find((p) => p.mode === m);
+        if (match) planner.setProfile(match.id);
+      }
+    },
+    [profiles, planner],
+  );
+  const chooseProfile = useCallback(
+    (p: Profile) => {
+      planner.setProfile(p);
+      const info = profiles.find((x) => x.id === p);
+      if (info && info.mode !== 'baseline') setMode(info.mode);
+    },
+    [profiles, planner],
+  );
+
+  // ---- Trip flow: Go -> routes -> (Move) choice / (Explore, Listen) start at once ----
+  const startNavigation = useCallback(
+    (r: RouteResult, m: RouteMode) => {
+      nav.start(r, m, contribute);
+      selectRoute(m);
+      setFollow(true);
+    },
+    [nav, contribute, selectRoute],
+  );
+  const endNavigation = useCallback(() => {
+    nav.stop();
+    stopSpeaking();
+    if (route === 'explore') navigate('home');
+  }, [nav, route]);
+
+  const resolveOrigin = useCallback(
+    (): Promise<OriginResult> =>
+      new Promise((resolve) => {
+        if (planner.state.origin) {
+          resolve(planner.state.origin);
+          return;
+        }
+        if (!('geolocation' in navigator)) {
+          resolve('geoUnavailable');
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, label: t('route.myLocation') }),
+          (err) => resolve(err.code === 1 ? 'geoDenied' : 'geoUnavailable'),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+        );
+      }),
+    [planner.state.origin, t],
+  );
+
+  const go = useCallback(async () => {
+    const dest = planner.state.destination;
+    if (!dest) {
+      setGoError('noDestination');
+      return;
+    }
+    setGoBusy(true);
+    setGoError(null);
+    const from = await resolveOrigin();
+    setGoBusy(false);
+    if (typeof from === 'string') {
+      setGoError(from);
+      return;
+    }
+    if (mode !== 'move') setAutoStart(mode);
+    planner.compareBetween(from, dest);
+    navigate(mode === 'move' ? 'navigate' : mode);
+  }, [planner, resolveOrigin, mode]);
+
+  const runDemo = useCallback(
+    (forMode: AppMode = mode) => {
+      setGoError(null);
+      if (forMode !== 'move') setAutoStart(forMode);
+      planner.runDemo();
+      navigate(forMode === 'move' ? 'navigate' : forMode);
+    },
+    [planner, mode],
+  );
+
+  /** Listen mode: route to a spoken destination; navigation starts when the routes arrive. */
+  const routeForListen = useCallback(
+    async (to: PlannerPoint): Promise<'ok' | 'geoDenied' | 'geoUnavailable'> => {
+      const from = await resolveOrigin();
+      if (typeof from === 'string') return from;
+      setAutoStart('listen');
+      planner.compareBetween(from, to);
+      return 'ok';
+    },
+    [planner, resolveOrigin],
+  );
+
+  const { result, loading: routesLoading, error: routesError } = planner.state;
+  useEffect(() => {
+    if (!autoStart || routesLoading) return;
+    if (routesError) {
+      setAutoStart(null);
+      return;
+    }
+    if (!result) return;
+    const m: RouteMode | null = result.routes.samaan ? 'samaan' : result.routes.standard ? 'standard' : null;
+    if (m && result.routes[m]) startNavigation(result.routes[m] as RouteResult, m);
+    setAutoStart(null);
+  }, [autoStart, result, routesLoading, routesError, startNavigation]);
+
+  // When a comparison arrives, hide the static demo layer (its dashed line would be confused with a route).
+  useEffect(() => {
+    if (result) setVisible((v) => (v.demo ? { ...v, demo: false } : v));
+  }, [result]);
 
   const barriers = useMemo(() => data.barriers?.features ?? [], [data.barriers]);
   const footpathCount = data.footpaths?.features.length ?? 0;
@@ -404,7 +533,7 @@ export default function App() {
           : t('load.loaded', { barriers: barriers.length, footpaths: footpathCount });
 
   const statusNode = (
-    <p className={`statusline statusline--${status}`} role="status" aria-live="polite">
+    <p className={`statusline statusline--${status}${status === 'ok' ? ' sr-only' : ''}`} role="status" aria-live="polite">
       {statusText}
       {basemapError && <span className="statusline__extra"> {t('load.basemap')}</span>}
     </p>
@@ -412,160 +541,230 @@ export default function App() {
 
   const missionName = mission ? (lang === 'hi' ? mission.properties.name_hi || mission.properties.name_en : mission.properties.name_en) : '';
 
+  // ---- Layout decisions ----
+  const navScreen = route === 'navigate' || route === 'explore' || route === 'listen';
+  const navActive = Boolean(navSession) && navScreen;
+  const hideTabs = navActive;
+  const hideStrip = navActive && route === 'explore';
+  const showHome = route === 'home' || (route === 'navigate' && !navSession && !result && !routesLoading) || (route === 'explore' && !navSession);
+  const showChoice = route === 'navigate' && !navSession && (result !== null || routesLoading);
+  const sheetFraction =
+    navActive ? 0.3 : route === 'home' || showHome ? 0.56 : showChoice ? 0.54 : route === 'reach' ? 0.6 : route === 'listen' ? 0.7 : legendOpen || listOpen ? 0.5 : 0.06;
+  const hidingSheet = Boolean(pickMode);
+
   return (
-    <div className="app">
+    <div className={`app${navActive ? ' app--nav' : ''}`}>
       <a className="skip-link" href="#main">
         {t('skip.toContent')}
       </a>
-      <Header
-        zone={zone}
-        lang={lang}
-        onLangChange={changeLang}
-        highContrast={highContrast}
-        onToggleContrast={toggleContrast}
-        legendOpen={legendOpen}
-        onToggleLegend={toggleLegend}
-        listOpen={listOpen}
-        onToggleList={toggleList}
-        plannerOpen={plannerOpen}
-        onTogglePlanner={togglePlanner}
-        plannerBtnRef={plannerBtnRef}
-        legendBtnRef={legendBtnRef}
-        listBtnRef={listBtnRef}
-        reachLinkRef={reachLinkRef}
-        synthetic={synthetic}
-        status={route === 'map' ? statusNode : null}
-        route={route}
-      />
+      <div className={`phone${hideStrip ? ' phone--nostrip' : ''}${hideTabs ? ' phone--notabs' : ''}`}>
+        {!hideStrip && <StatusStrip zone={zone} lang={lang} synthetic={synthetic} status={statusNode} />}
 
-      {route === 'capture' ? (
-        <main id="main" className="main main--page" tabIndex={-1}>
-          <CapturePage />
-        </main>
-      ) : route === 'validate' ? (
-        <main id="main" className="main main--page" tabIndex={-1}>
-          <ValidatePage zone={zone} lang={lang} onResolved={onResolved} />
-        </main>
-      ) : route === 'missions' ? (
-        <main id="main" className="main main--page" tabIndex={-1}>
-          <MissionsPage lang={lang} onShowOnMap={showMission} onShowJolt={showJolt} />
-        </main>
-      ) : route === 'ride' ? (
-        <main id="main" className="main main--page" tabIndex={-1}>
-          <RidePage lang={lang} onShowOnMap={(s) => void showRideOnMap(s)} />
-        </main>
-      ) : (
-        <main id="main" className={`main${plannerOpen && route === 'map' ? ' main--planner' : ''}${route === 'reach' ? ' main--reach' : ''}`} tabIndex={-1}>
-          <MapView
-            zone={zone}
-            zoneSettled={zoneSettled}
-            data={data}
-            visible={visible}
-            lang={lang}
-            selection={selection}
-            onBasemapError={() => setBasemapError(true)}
-            routes={result}
-            selectedRoute={planner.state.selected}
-            onSelectRoute={selectRoute}
-            origin={planner.state.origin}
-            destination={planner.state.destination}
-            pickMode={pickMode}
-            onPick={onPick}
-            pendingReports={pendingReports}
-            mission={mission}
-            onReportFixed={reportFixed}
-            reach={route === 'reach' ? reach.state.result : null}
-            reachFixed={reach.state.fixed}
-            reachFocus={route === 'reach' ? reachFocus : null}
-            onPhotographJolt={photographJolt}
-            wheelsFocus={wheelsFocus}
-          />
+        {isMapRoute ? (
+          <main id="main" className="main" tabIndex={-1}>
+            <MapView
+              zone={zone}
+              zoneSettled={zoneSettled}
+              data={data}
+              visible={visible}
+              lang={lang}
+              selection={selection}
+              onBasemapError={() => setBasemapError(true)}
+              routes={result}
+              selectedRoute={navSession ? navSession.mode : planner.state.selected}
+              onSelectRoute={selectRoute}
+              origin={planner.state.origin}
+              destination={planner.state.destination}
+              pickMode={pickMode}
+              onPick={onPick}
+              pendingReports={pendingReports}
+              mission={mission}
+              onReportFixed={reportFixed}
+              reach={route === 'reach' ? reach.state.result : null}
+              reachFixed={reach.state.fixed}
+              reachFocus={route === 'reach' ? reachFocus : null}
+              onPhotographJolt={photographJolt}
+              wheelsFocus={wheelsFocus}
+              userPosition={navSession ? nav.state.position : null}
+              follow={navActive && follow}
+              onUserPan={() => setFollow(false)}
+              sheetFraction={sheetFraction}
+            />
 
-          {route === 'reach' && (
-            <aside id="panel-reach" className="panel panel--reach" aria-labelledby="reach-title" onKeyDown={onPanelKeyDown(closeReach)}>
-              <ReachPanel reach={reach} lang={lang} onClose={closeReach} headingRef={reachHeadingRef} onShowBarrier={showReachBarrier} />
-            </aside>
-          )}
+            {status === 'error' && !navActive && (
+              <div className="banner banner--error" role="alert">
+                {t('load.error')}
+              </div>
+            )}
 
-          {pickMode && !plannerOpen && (
-            <div className="banner banner--pick" role="status" aria-live="polite">
-              {t('route.pickHint', { field: t(`route.${pickMode}`).toLocaleLowerCase() })}
-              <button type="button" className="btn" onClick={() => setPickMode(null)}>
-                {t('panels.close')}
-              </button>
-            </div>
-          )}
+            {pickMode && (
+              <div className="banner banner--pick" role="status" aria-live="polite">
+                {t('route.pickHint', { field: t(`route.${pickMode}`).toLocaleLowerCase() })}
+                <button type="button" className="btn btn--small" onClick={() => setPickMode(null)}>
+                  {t('panels.close')}
+                </button>
+              </div>
+            )}
 
-          {mission && !pickMode && (
-            <div className="banner banner--pick banner--mission" role="status" aria-live="polite" lang={lang}>
-              <span>{t('missions.onMap', { rank: mission.properties.rank, name: missionName })}</span>
-              <button type="button" className="btn" onClick={() => setMission(null)}>
-                {t('missions.clearMap')}
-              </button>
-            </div>
-          )}
+            {route === 'map' && mission && !pickMode && (
+              <div className="banner banner--pick banner--mission" role="status" aria-live="polite" lang={lang}>
+                <span>{t('missions.onMap', { rank: mission.properties.rank, name: missionName })}</span>
+                <button type="button" className="btn btn--small" onClick={() => setMission(null)}>
+                  {t('missions.clearMap')}
+                </button>
+              </div>
+            )}
 
-          {status === 'error' && (
-            <div className="banner banner--error" role="alert">
-              {t('load.error')}
-            </div>
-          )}
-
-          {route === 'map' && !plannerOpen && !pickMode && (
-            <button type="button" className="fab" onClick={reportBarrier}>
-              <span className="fab__glyph" aria-hidden="true">
-                📣
-              </span>
-              <span className="fab__text">{t('report.fab')}</span>
-            </button>
-          )}
-
-          {route === 'map' && plannerOpen && (
-            <div className="route-dock" onKeyDown={onPanelKeyDown(togglePlanner)}>
-              <aside id="panel-route" className="panel panel--route" aria-labelledby="route-title">
-                <RoutePlanner planner={planner} lang={lang} onClose={togglePlanner} headingRef={plannerHeadingRef} onReport={reportBarrier} />
-              </aside>
-              {result && (
-                <aside className="panel panel--compare" aria-labelledby="compare-title">
-                  <RouteCompare
-                    result={result}
-                    selected={planner.state.selected}
-                    lang={lang}
-                    onSelect={selectRoute}
-                    onReportFixed={reportFixedFromRoute}
-                  />
-                </aside>
-              )}
-            </div>
-          )}
-
-          {legendOpen && (
-            <aside
-              id="panel-legend"
-              className="panel panel--legend"
-              aria-labelledby="legend-title"
-              onKeyDown={onPanelKeyDown(toggleLegend)}
-            >
-              <Legend visible={visible} onToggle={toggleLayer} onClose={toggleLegend} headingRef={legendHeadingRef} />
-            </aside>
-          )}
-
-          {route === 'map' && listOpen && (
-            <aside id="panel-list" className="panel panel--list" aria-labelledby="list-title" onKeyDown={onPanelKeyDown(toggleList)}>
-              <BarrierList
-                barriers={barriers}
+            {showHome && !hidingSheet && (
+              <HomeSheet
+                planner={planner}
                 lang={lang}
-                selectedId={selection?.feature.properties.id ?? null}
-                onSelect={selectBarrier}
-                onClose={toggleList}
-                headingRef={listHeadingRef}
+                mode={mode}
+                onMode={chooseMode}
+                onGo={() => void go()}
+                onDemo={() => runDemo()}
+                goBusy={goBusy}
+                goError={goError}
+                headingRef={homeHeadingRef}
+                compact={route !== 'home'}
               />
-            </aside>
-          )}
+            )}
 
-          {reportMode && <ReportSheet mode={reportMode} lang={lang} onClose={closeReport} onSubmitted={onReportSubmitted} />}
-        </main>
-      )}
+            {showChoice && !hidingSheet && result && (
+              <RouteChoice
+                result={result}
+                selected={planner.state.selected}
+                lang={lang}
+                loading={routesLoading}
+                onSelect={selectRoute}
+                onStart={(m) => {
+                  const r = result.routes[m];
+                  if (r) startNavigation(r, m);
+                }}
+                onEdit={() => {
+                  planner.clear();
+                  navigate('home');
+                }}
+                onReportFixed={reportFixedFromRoute}
+                headingRef={choiceHeadingRef}
+              />
+            )}
+            {showChoice && !result && routesLoading && (
+              <section className="sheet-choice" aria-busy="true">
+                <div className="grabber" aria-hidden="true" />
+                <p className="place__status" role="status">
+                  {t('route.loading')}
+                </p>
+              </section>
+            )}
+
+            {route === 'navigate' && navSession && (
+              <NavigationScreen
+                nav={nav}
+                sensors={sensors}
+                lang={lang}
+                muted={muted}
+                onToggleMute={() => setMuted((m) => !m)}
+                onReport={reportBarrier}
+                onEnd={endNavigation}
+                follow={follow}
+                onRecenter={() => setFollow(true)}
+                headingRef={screenHeadingRef}
+              />
+            )}
+
+            {route === 'explore' && navSession && (
+              <ExploreScreen
+                nav={nav}
+                sensors={sensors}
+                lang={lang}
+                muted={muted}
+                onToggleMute={() => setMuted((m) => !m)}
+                onEnd={endNavigation}
+                onReport={reportBarrier}
+                headingRef={screenHeadingRef}
+              />
+            )}
+
+            {route === 'listen' && (
+              <ListenScreen
+                nav={nav}
+                planner={planner}
+                lang={lang}
+                onRoute={routeForListen}
+                onDemo={() => runDemo('listen')}
+                onEnd={endNavigation}
+                onReport={reportBarrier}
+                headingRef={screenHeadingRef}
+              />
+            )}
+
+            {route === 'reach' && (
+              <aside id="panel-reach" className="panel panel--reach" aria-labelledby="reach-title" onKeyDown={onPanelKeyDown(closeReach)}>
+                <ReachPanel reach={reach} lang={lang} onClose={closeReach} headingRef={reachHeadingRef} onShowBarrier={showReachBarrier} />
+              </aside>
+            )}
+
+            {(route === 'map' || route === 'reach') && (
+              <div className="maptools" role="group" aria-label={t('map.toolsLabel')}>
+                <button ref={legendBtnRef} type="button" className="pill" aria-expanded={legendOpen} aria-controls="panel-legend" onClick={toggleLegend}>
+                  {t('panels.legend')}
+                </button>
+                {route === 'map' && (
+                  <button ref={listBtnRef} type="button" className="pill" aria-expanded={listOpen} aria-controls="panel-list" onClick={toggleList}>
+                    {t('panels.barriers')}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {route === 'map' && !legendOpen && !listOpen && !pickMode && (
+              <button type="button" className="fab" onClick={reportBarrier}>
+                <span className="fab__glyph" aria-hidden="true">
+                  +
+                </span>
+                <span className="fab__text">{t('report.fab')}</span>
+              </button>
+            )}
+
+            {legendOpen && (route === 'map' || route === 'reach') && (
+              <aside id="panel-legend" className="panel panel--legend" aria-labelledby="legend-title" onKeyDown={onPanelKeyDown(toggleLegend)}>
+                <Legend visible={visible} onToggle={toggleLayer} onClose={toggleLegend} headingRef={legendHeadingRef} />
+              </aside>
+            )}
+
+            {route === 'map' && listOpen && (
+              <aside id="panel-list" className="panel panel--list" aria-labelledby="list-title" onKeyDown={onPanelKeyDown(toggleList)}>
+                <BarrierList
+                  barriers={barriers}
+                  lang={lang}
+                  selectedId={selection?.feature.properties.id ?? null}
+                  onSelect={selectBarrier}
+                  onClose={toggleList}
+                  headingRef={listHeadingRef}
+                />
+              </aside>
+            )}
+          </main>
+        ) : (
+          <main id="main" className="main main--page" tabIndex={-1}>
+            {route === 'capture' && <CapturePage />}
+            {route === 'validate' && <ValidatePage zone={zone} lang={lang} onResolved={onResolved} />}
+            {route === 'missions' && <MissionsPage lang={lang} onShowOnMap={showMission} onShowJolt={showJolt} />}
+            {route === 'ride' && <RidePage lang={lang} onShowOnMap={(s) => void showRideOnMap(s)} />}
+            {route === 'contribute' && <ContributePage contribute={contribute} onToggle={setContribute} onReport={reportBarrier} />}
+            {route === 'stats' && <StatsPage data={data} lang={lang} loading={refreshing} onRefresh={() => void refreshLayers()} />}
+            {route === 'settings' && (
+              <SettingsPage planner={planner} lang={lang} onLangChange={changeLang} highContrast={highContrast} onToggleContrast={toggleContrast} onProfile={chooseProfile} />
+            )}
+            {route === 'more' && <MorePage />}
+          </main>
+        )}
+
+        {!hideTabs && <TabBar route={route} />}
+      </div>
+
+      {reportMode && <ReportSheet mode={reportMode} lang={lang} onClose={closeReport} onSubmitted={onReportSubmitted} />}
     </div>
   );
 }

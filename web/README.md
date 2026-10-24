@@ -1,8 +1,9 @@
-# SAMAAN web (P0 scaffold + P2 capture + P3 route planner + P7 citizen loop + P8 reach gap + P9 ride mode)
+# SAMAAN web (phone-first navigation PWA)
 
-Vite + React 18 + TypeScript single-page PWA that renders the SAMAAN API's
-GeoJSON layers on a MapLibre GL JS map, in English and Hindi, with
-accessibility built in from the start.
+Vite + React 18 + TypeScript single-page PWA for SAMAAN: accessible walking
+routes around footpath barriers (demo zone: Manipal University Jaipur campus),
+in English and Hindi, phone-first (375-430 px; tablets and desktops centre a
+430 px column), with accessibility built in from the start.
 
 ## Run
 
@@ -17,114 +18,165 @@ Other scripts: `npm run build` (type-check + production bundle in `dist/`),
 `npm run preview` (serve the built bundle), `npm run typecheck`.
 
 The Python API must be running separately; the frontend never ships fake
-features. If the API is unreachable it shows a translated error and an
-empty map.
+features. If the API is unreachable it shows a translated error, an empty map
+and dashes in Statistics; the profile list falls back to a built-in copy of
+the API's ids and modes.
 
 ## Environment
 
 | Variable       | Default                  | Purpose                                                        |
 | -------------- | ------------------------ | -------------------------------------------------------------- |
-| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route`, `GET /search`, the citizen loop (`/users`, `/reports`, `/reports/{id}/votes`, `/missions`), the reach gap (`GET /reach/anchors`, `GET /reach`), ride mode (`/rides`, `/rides/{id}/samples`, `/rides/{id}/end`, `/rides/replay-demo`, `GET /layers/wheels`) (barrier `photo_urls` and report `photo_url` are relative to it) |
+| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash): `/profiles`, `/route`, `/search`, `/zone`, `/layers/*`, `/images` (uploads and photos), `/coverage/recompute`, the citizen loop (`/users`, `/reports`, `/reports/{id}/votes`, `/missions`), the reach gap (`/reach/anchors`, `/reach`), ride mode (`/rides`, `/rides/{id}/samples`, `/rides/{id}/end`, `/rides/replay-demo`, `/layers/wheels`) |
 
-## Pages
+## App shell
 
-The app is a single page with a hash router (`src/router.ts`, no library):
+- **Status strip** (top): app name, zone name, the synthetic-data badge, and a
+  polite live region for load errors.
+- **Content**: the MapLibre map stays mounted behind Home, Navigate, Explore,
+  Listen, Map and Reach Gap; the other pages scroll.
+- **Tab bar** (bottom, 4 tabs, `aria-current="page"` plus a filled pill and an
+  underlined label): **Home**, **Navigate**, **Contribute**, **More**. The tab
+  bar hides while a trip is being navigated (the End button is always on screen).
 
-- `#/` (default) - the map (with the route planner and the **Report a barrier** button).
-- `#/capture` - the photo-walk capture page.
-- `#/validate` - validate pending citizen reports, one card at a time.
-- `#/missions` - the top-10 footpath stretches that most need a photo walk.
-- `#/reach` - the **Reach Gap**: how far a walker vs. a wheelchair user (or
-  elderly person / pram) gets from a metro station in N minutes, and which
-  five fixes close the gap. Uses the main map (it stays mounted) with a side
-  panel / bottom sheet like the planner.
-- `#/ride` - **Ride mode** ("wheels as sensors"): a phone mounted on a
-  wheelchair records the accelerometer and GPS; the server turns smooth
-  traversals into footpaths "verified by wheels" and jolts into suspected
-  barriers.
+Hash routes (`src/router.ts`, no library): `#/home` (default), `#/navigate`,
+`#/explore`, `#/listen`, `#/contribute`, `#/more`, and under More: `#/map`
+(layers, legend, barrier list, report button), `#/validate`, `#/missions`,
+`#/reach`, `#/ride`, `#/capture`, `#/stats`, `#/settings` (language, contrast,
+profile, risk, who you are).
 
-The header carries a Map / Capture / Validate / Missions / Reach Gap / Ride
-navigation with `aria-current="page"` (six links wrap to 3 + 3 on phones).
+Design tokens live in `src/styles.css` (`--c-bg #FAFAF9`, `--c-primary
+#1561F1`, `--c-ink #000`, `--c-card #fff`, `--r-card 18px`, `--shadow-card`,
+system font stack with Noto Sans Devanagari). The high-contrast theme
+(`samaan.theme` in localStorage, or `prefers-contrast: more`) switches the same
+tokens to black / white / yellow.
 
-## Route planner and three-route comparison (`#/`)
+## Three modes, one trip engine
 
-The map page carries the route planner so the comparison works on a phone
-without leaving the map. **Plan route** in the toolbar opens it
-(`aria-expanded` / `aria-controls="panel-route"`); on phones it is a bottom
-sheet, on wider screens a left column with the comparison docked along the
-bottom of the map.
+`GET /profiles` gives each profile a **mode**; picking a mode on Home switches
+to a matching profile and picking a profile in Settings switches the mode.
 
-**Planner** (`src/components/RoutePlanner.tsx`, state in `src/routePlanner.ts`):
+| Mode | Who | Screen |
+| ---- | --- | ------ |
+| **Move** | wheelchair, walking aid, pram | map, two route cards, black turn banner, bottom sheet with arrival / minutes / km and a blue progress bar |
+| **Explore** | dyslexic / autistic travellers | camera full screen, one huge arrow, a pictogram and at most four words per step, the distance as a big number, a Simplify toggle |
+| **Listen** | blind / low-vision travellers | one giant button, spoken prompts and instructions, voice input for the destination and commands |
 
-- Origin and destination fields. Each is a `role="combobox"` search input
-  (debounced 300 ms to `GET /search?q=&limit=8`, results in a `role="listbox"`
-  with Up/Down/Enter/Escape; selecting fills the field and drops the A/B pin),
-  a **Pick on map** toggle (`aria-pressed`; the next map click/tap sets the
-  point, the result is announced in a polite live region; on a phone the sheet
-  closes while picking and a banner with a Close button shows what a tap does)
-  and, for the origin, **Use my location** (`geolocation.getCurrentPosition`).
-- **Riya's trip (demo)** calls `GET /route?demo=riya` with the current
-  profile/risk/time and fills both fields from the response.
-- Profile (walker, manual wheelchair, elderly with walking aid, pram) and risk
-  tolerance (strict / balanced / relaxed, each with a one-line explanation) as
-  radio groups; departure time as `<input type="time">` defaulting to now and
-  sent as today's ISO datetime **with the local UTC offset** so the API sees
-  the local hour. Profile and risk persist in `localStorage`
-  (`samaan.route.profile`, `samaan.route.risk`).
-- **Compare routes** is disabled until both points are set. Loading is in a
-  `role="status"` line; errors in `role="alert"`: 404 -> "too far from any
-  known footpath" (or "demo not available" for the demo), 422 -> invalid
-  request, anything else -> generic. Buttons stay enabled while loading
-  (`aria-busy`) so keyboard focus is never dropped.
+### Home (`#/home`, `src/components/HomeSheet.tsx`)
 
-**Comparison** (`src/components/RouteCompare.tsx`): one card per mode in the
-order shortest / naive accessible / SAMAAN. Desktop: three columns. Phone: a
-horizontally snap-scrolling strip with **1 Shortest / 2 Naive / 3 SAMAAN**
-buttons above it (`aria-current` follows the card in view; activating one
-scrolls the strip and focuses the card heading, so no horizontal gesture is
-needed). Each card shows the mode title and explanation, length (rounded
-metres), ETA (minutes), a stacked verified bar (`role="img"` with a full text
-alternative; green = checked, grey hatched = never seen, red striped =
-blocked, plus the visible "72% checked · 28% never seen" label), barrier count
-with the impassable count highlighted (warning glyph + text), the barrier list
-(class, severity, permanent/temporary, "likely present at this hour (p%)"
-when `p_present < 1`, first photo thumbnail when `photo_urls` is present), and
-unchecked-stretch count and total length. A `null` route shows "No route for
-this profile". `synthetic` routes carry the existing synthetic badge. The
-SAMAAN card has a thicker border **and** a "Recommended" badge. Each card has a
-screen-reader-only summary ("SAMAAN route: 821 metres, 19 minutes, 99 percent
-checked, 1 barrier") and a **Show on map** button (`aria-pressed`) that
-highlights the route, fits the map to it and dims the other two; the selection
-is announced in a live region.
+Greeting (with the display name once "Who are you?" was answered), a big
+**Where to?** combobox (`src/components/PlaceField.tsx`: debounced
+`GET /search`, listbox with Up/Down/Enter/Escape, **Pick on map**), a **From**
+row that defaults to the GPS position (**Change** opens an origin field with
+**Use my location** and **Pick on map**), the three mode cards (native radios,
+checked = thick blue border + filled icon + check mark), the profile chip,
+**Options** (risk tolerance, departure time) and **Try the demo trip**
+(`GET /route?demo=riya`). **Show routes / Start Explore / Start Listen**
+resolves the origin (GPS, or the chosen point), calls `GET /route` and either
+shows the two cards (Move) or starts navigating the SAMAAN route at once
+(Explore, Listen). Without GPS the error says how to set an origin or try the
+demo.
 
-**Map** (`MapView.tsx`, styles in `src/components/routeStyles.tsx`): shortest =
-thin dashed blue, naive = medium dotted orange, SAMAAN = thick solid purple
-with a white casing (width and dash differ, not only colour); A/B pins; the
-selected route's barriers get a ring that pulses (static under
-`prefers-reduced-motion`; red ring = impassable for the profile, orange
-otherwise); its unknown stretches are drawn as a grey striped overlay along the
-footpath geometry matched by `edge_ids` (falls back to a straight
-`start`-`end` segment). Clicking a route line selects its card. The legend has
-a "Compared routes" section. When a comparison loads, the static **Demo route**
-layer is switched off (its dashed purple line would be confused with
-SAMAAN's); it can be re-enabled in the legend.
+### Route choice (Move, `#/navigate`, `src/components/RouteChoice.tsx`)
 
-**Barrier popups** show photo thumbnails when a `/layers/barriers` feature
-carries `photo_urls`; the property is optional and ignored when absent.
+Two cards side by side: **Standard route** (what a normal map suggests) and
+**SAMAAN route** (Recommended). Each shows minutes, km, a **confidence ring**
+(SVG; the percentage inside, the label high / medium / low as text), "n
+barriers (m impassable)" and "x% checked · y segments without recent
+imagery". The cards are `aria-pressed` buttons whose accessible name is the
+full summary; tapping one previews it on the map (the other line is dimmed)
+and **Start** begins navigation. **Details** lists the barriers (with **Report
+as fixed**), the unknown stretches and every turn-by-turn step with its
+pictogram. `naive_accessible` from `&modes=all` is typed but never shown.
 
-### Keyboard-only flow
+### Navigation (Move, `src/components/NavigationScreen.tsx`)
 
-1. Tab to **Plan route** in the toolbar, press Enter: focus moves to the
-   "Plan a route" heading.
-2. Tab to **Riya's trip (demo)**, press Enter: the comparison appears below
-   the form; the SAMAAN card is pre-selected and the map fits it.
-3. Tab into the comparison (phone: the three numbered tab buttons; Enter on
-   "3 SAMAAN" scrolls to that card and focuses its heading), then to **Show on
-   map** on any card and press Enter to highlight it.
-4. Escape anywhere in the planner closes it and returns focus to **Plan
-   route** (Escape in an open suggestion list closes the list first). The
-   legend and barrier list panels behave the same way (Escape closes, focus
-   returns to their toolbar button).
+- Black **turn banner**: step pictogram, distance to the step (rounded to 5 m
+  under 100 m, 10 m above), the instruction in the current language, the
+  street name. Warnings on the upcoming step are orange chips under it (red
+  for "impassable for this profile"), always with text.
+- The map follows the GPS position (`watchPosition` through `useSensors`), a
+  blue dot with a halo; panning stops following and a **Re-centre** button
+  appears. Route lines: SAMAAN thick solid blue with a white casing, standard
+  thinner dashed grey with a white casing; black A / blue B pins.
+- **Simulated walk**: offered when GPS is denied, missing after 8 s, or the
+  fix is more than 50 m from the route. It moves a white dot with a blue ring
+  along the route at 1 m/s (×5 / ×20 for demos), labelled "not your real
+  position", and never feeds the photo contribution.
+- Bottom sheet: arrival time, minutes left, km left, blue progress bar, the
+  confidence sentence. Round floating buttons: mute / unmute voice, report a
+  barrier (the existing report sheet), re-centre, end.
+- Step engine (`src/navigation.ts`, shared by all three modes): the current
+  step is the first step whose along-route distance is more than 8 m ahead of
+  the projected position (`src/geo.ts`); each new step is announced once
+  (speech + `aria-live="assertive"`); arrival within 8 m of the end shows a
+  summary (km, minutes, confidence) and, when contribution was on,
+  "Contribute photos of this trip?".
+
+### Explore (`#/explore`, `src/components/ExploreScreen.tsx`)
+
+Camera feed full screen (`useCamera`; without a camera the map shows
+instead). One huge arrow rotated to (bearing to the next step − device
+heading), snapping to the eight compass directions within 15°; the heading is
+the compass when available, else the direction of travel, else the route
+bearing (the fallback is named in an sr-only line). A large pictogram for
+the step type, at most four words ("Turn right", "Cross the road"), the
+distance as a big number with "m". Calm colours: blue arrow, white panels; the
+only red is the impassable warning icon. No animation except the arrow
+rotation, and none under `prefers-reduced-motion`. **Simplify** keeps only
+the arrow and the distance (remembered in `samaan.explore.simplify`).
+
+### Listen (`#/listen`, `src/components/ListenScreen.tsx`, `src/speech.ts`)
+
+One giant button toggles listening (`SpeechRecognition` /
+`webkitSpeechRecognition`, `hi-IN` or `en-IN`). Output uses
+`speechSynthesis` with a Hindi / Indian-English voice when the device has
+one; a new step cancels what was being said.
+
+Voice flow: say a place → `GET /search` → the top result is read back →
+"Say yes to go" → the route is fetched and navigation starts with "SAMAAN
+route, confidence high, 95 percent checked" and the first instruction. While
+navigating: **repeat** (दोबारा), **where am I** (मैं कहाँ हूँ: current street
+and distance to the next step), **stop** (रुको). Also **demo** / **रिया** for
+the demo trip and **no** / **नहीं** to pick another place. Double-tapping the
+screen repeats the current step.
+
+Everything also works without speech: a typed destination field with
+**Find**, **Yes, go to …** / **No, another place**, and **Repeat / Where am
+I? / Stop** buttons; every prompt is shown in an `aria-live="assertive"`
+box. Missing APIs show a clear message (no voice input, no speech output, or
+neither) and the text flow remains.
+
+### Contribute (`#/contribute`, `src/components/ContributePage.tsx`)
+
+A `role="switch"` **Contribute photos while I navigate** (`samaan.contribute`).
+When on, Move-mode navigation runs a hidden camera and queues a photo every
+10 m of real GPS movement through the existing upload queue with session id
+`nav-<YYYYMMDD>`; never during the simulated walk. The page also shows the
+upload queue counters and links to Capture, Ride, Missions and Report.
+
+### Statistics (`#/stats`, `src/components/StatsPage.tsx`)
+
+2×2 cards computed on the phone: footpath km checked (clear + blocked length
+from `/layers/footpaths`, with a tiny clear / blocked / unknown bar), barriers
+verified (active count from `/layers/barriers`, sparkline by severity),
+reports pending (`GET /reports?status=pending` count), segments verified by
+wheels (`/layers/wheels`), plus **Confidence of your last route**
+(`samaan.lastConfidence`, written when a trip starts). Each card has a full
+text alternative; the mini charts are decorative.
+
+### Keyboard-only flows
+
+- **Move**: Tab to **Where to?**, type, Down/Enter to choose; Tab to **Show
+  routes** (or **Try the demo trip**), Enter. Focus lands on the route-choice
+  heading; Tab to a card (Enter previews it), then **Start**. Focus moves to
+  the turn banner; Tab reaches voice / report / end and, when offered,
+  **Simulate walk**. Escape in the suggestion list closes the list first.
+- **Explore**: the same start; on the screen, Tab cycles Simplify / voice /
+  report / end.
+- **Listen**: Tab to the typed destination field, type, Enter; Tab to **Yes,
+  go to …**; while navigating, Tab to Repeat / Where am I? / Stop.
+- Legend and barrier list on the Map page: opening moves focus to the
+  heading, Escape closes and returns focus to the pill button.
 
 ## Citizen loop: Report → Validate → map/route update (P7)
 
@@ -483,42 +535,37 @@ singleton, so switching back to the map does not stop uploads.
 
 ## Where things live
 
-- `src/api.ts` - TypeScript types for the API contract and typed fetch helpers.
-- `src/i18n/en.json`, `src/i18n/hi.json` - every UI string. `src/i18n/index.ts`
-  initialises i18next, persists the chosen language in `localStorage`
-  (`samaan.lang`) and keeps `<html lang>` in sync.
-- `src/components/MapView.tsx` - MapLibre map, sources/layers, popups.
-- `src/components/BarrierList.tsx` - keyboard/screen-reader list of barriers.
-- `src/components/Legend.tsx` - layer toggles and pattern legend.
-- `src/components/Header.tsx` - app name, zone, Map/Capture navigation,
-  language/contrast/panel controls (Plan route / Layers & legend / Barrier list).
-- `src/components/RoutePlanner.tsx` - origin/destination search, pick-on-map,
-  geolocation, profile/risk/time, demo button, compare button.
-- `src/components/RouteCompare.tsx` - the three route cards, verified bar,
-  phone tab strip.
-- `src/components/routeStyles.tsx` - shared line styles/swatches for the three
-  routes, the unknown overlay and the barrier ring.
-- `src/routePlanner.ts` - `useRoutePlanner()` state hook (incl. `rerun()`),
-  `departIso()`, localStorage keys.
+- `src/api.ts` - TypeScript types for the API contract (profiles, the two
+  routes with confidence and steps, barriers, reports, reach, rides) and typed
+  fetch helpers.
+- `src/i18n/en.json`, `src/i18n/hi.json` - every UI string (key parity is
+  checked by hand; `src/i18n/index.ts` initialises i18next and persists
+  `samaan.lang`).
+- `src/router.ts` - hash routes, tabs, `MORE_ROUTES`, `MAP_ROUTES`.
+- `src/App.tsx` - shell, data loading, mode/profile coupling, the trip flow
+  (Go → routes → choice or auto-start), report sheet, legend / list panels.
+- `src/components/Shell.tsx` - status strip and tab bar.
+- `src/components/HomeSheet.tsx`, `PlaceField.tsx` - Home sheet and the search combobox.
+- `src/components/RouteChoice.tsx`, `ConfidenceRing.tsx`, `StepGlyph.tsx` - the two cards, the ring, step pictograms.
+- `src/components/NavigationScreen.tsx` - turn banner, bottom sheet, floating buttons, simulation bar, arrival summary, hidden contribution camera.
+- `src/components/ExploreScreen.tsx`, `ListenScreen.tsx` - the other two modes.
+- `src/components/useAnnouncer.ts` - announcement → spoken text + live region.
+- `src/navigation.ts` - `useNavigation()` step engine (GPS or simulated position, projection, step advancement, announcements).
+- `src/geo.ts` - polyline distances, projection, bearings, eight-way snapping, distance formatting.
+- `src/speech.ts` - speech synthesis / recognition wrappers and the yes / no / repeat / where / stop / demo command matcher (English and Hindi).
+- `src/mode.ts` - small persistent stores: mode, contribute consent, last confidence.
+- `src/components/ContributePage.tsx`, `StatsPage.tsx`, `SettingsPage.tsx`, `MorePage.tsx`.
+- `src/components/MapView.tsx` - MapLibre map, sources/layers, popups, route lines, user dot and follow mode.
+- `src/components/BarrierList.tsx`, `Legend.tsx` - screen-reader list of barriers, layer toggles and pattern legend.
+- `src/components/routeStyles.tsx` - shared line styles / swatches for the two routes, the unknown overlay, the barrier ring and the user dot.
+- `src/routePlanner.ts` - `useRoutePlanner()` (origin / destination, profile list from `/profiles`, risk, time, the `/route` result, `rerun()`).
 - `src/components/CapturePage.tsx` - camera preview, sensors, settings, queue UI.
 - `src/components/ReportSheet.tsx` - "Report a barrier" / "Report as fixed" modal sheet.
 - `src/components/UserDialog.tsx` - "Who are you?" dialog, `UserChip`, Tab trap helper.
-- `src/components/ValidatePage.tsx` - one-card-at-a-time validation with mini-map and 1/2/3 keys.
-- `src/components/MissionsPage.tsx` - ranked missions, show on map, walk this, recompute.
-- `src/components/ReachPanel.tsx` - Reach Gap controls, headline, to-do list with simulate-fix checkboxes.
-- `src/components/reachStyles.tsx` - blob / anchor / fix-pin styles and legend swatches shared by map and legend.
-- `src/reach.ts` - `useReachGap(active)` state hook (anchors, parameters, `/reach` result, simulated fix ids).
-- `src/components/RidePage.tsx` - Ride mode: Start/Stop, live counters, summary, replay demo.
-- `src/ride.ts` - `rideEngine` singleton + `useRide()`: devicemotion/GPS recording, 10 s batches in IndexedDB, backoff, Wake Lock, RMS/jolt hint, end/summary.
-- `src/user.ts` - stored citizen identity (`samaan.user`), `useUser()`, `createUser()`, `refreshUser()`.
-- `src/camera.ts` - `useCamera()` (rear camera preview + JPEG frame grab) shared by capture and report.
-- `src/sensors.ts` - `useSensors()` (GPS, compass heading, pitch), haversine.
-- `src/uploadQueue.ts` - persistent sequential upload queue with backoff.
-- `src/idb.ts` - minimal IndexedDB wrapper (open, put, getAll, remove); stores `pending` (photos) and `rideBatches` (ride samples).
-- `src/router.ts` - `useHashRoute()`, `navigate()`, `hrefFor()` for the six pages.
-- `src/styles.css` - mobile-first styles, light/dark/high-contrast tokens.
-- `public/manifest.webmanifest`, `public/icon.svg` - PWA manifest (no service
-  worker yet).
+- `src/components/ValidatePage.tsx`, `MissionsPage.tsx`, `ReachPanel.tsx`, `reachStyles.tsx`, `reach.ts`, `RidePage.tsx`, `ride.ts` - unchanged P7-P9 pages.
+- `src/user.ts`, `src/camera.ts`, `src/sensors.ts`, `src/uploadQueue.ts`, `src/idb.ts` - identity, camera, GPS/compass, upload queue, IndexedDB.
+- `src/styles.css` - tokens, shell, sheets and the older page styles; light and high-contrast themes.
+- `public/manifest.webmanifest`, `public/icon.svg` - PWA manifest (no service worker yet).
 
 Barrier names in popups and the list use `name_en` / `name_hi` from the API;
 the i18n files also carry the eight barrier class names for labels.
@@ -597,6 +644,30 @@ the i18n files also carry the eight barrier class names for labels.
       takes focus; wheels symbols differ by pattern (rail vs. thin line vs.
       hollow circle with "!") and the legend describes them in words; the
       synthetic badge marks the demo ride.
+
+- [x] Phone-first shell: 4-tab bar with `aria-current`, a filled pill and an
+      underlined label; status strip live region; no horizontal scroll at
+      375-430 px; wider screens centre a 430 px column.
+- [x] Mode cards and profile radios are native inputs; the checked state is a
+      thick border plus a check mark; every radio has a full accessible name.
+- [x] Route cards: `aria-pressed` buttons whose name is the whole summary
+      (minutes, km, checked %, barriers, confidence); the confidence ring is
+      `role="img"` with the label as text; routes differ by width and dash.
+- [x] Navigation: the turn banner takes focus on start, step changes go to an
+      `aria-live="assertive"` region and (unless muted) to speech; warnings are
+      chips with text; the simulated walk is labelled as simulation; the
+      progress bar is a `progressbar` with a value.
+- [x] Explore: dyslexia-friendly text (letter-spacing 0.06em, line-height 1.6,
+      left aligned, no italics, no all-caps), at most four words, no red except
+      the impassable icon, arrow rotation is the only motion and is static
+      under reduced motion; Simplify is `aria-pressed`.
+- [x] Listen: giant `aria-pressed` button; every prompt in an assertive live
+      region; typed destination, Yes / No and command buttons as the keyboard
+      and no-speech path; clear messages when speech APIs are missing.
+- [x] Contribute switch is `role="switch"` with the state in words; photos are
+      never captured from simulated positions.
+- [x] Statistics cards carry full text alternatives; the bars and sparkline are
+      decorative.
 
 Not yet done (later phases): service worker/offline, keyboard navigation of
 map features themselves (use the list), dragging the report marker on a mini

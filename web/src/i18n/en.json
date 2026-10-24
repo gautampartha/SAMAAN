@@ -57,9 +57,7 @@
     "imageArrowTitle": "Camera direction",
     "imageArrow": "A black arrow beside the circle points where the camera faced; no arrow means the heading is unknown",
     "routeTitle": "Compared routes",
-    "routeShortest": "Shortest: thin dashed blue line",
-    "routeNaive": "Naive accessible: medium dotted orange line",
-    "routeSamaan": "SAMAAN: thick solid purple line with a white edge",
+    "routeSamaan": "SAMAAN: thick solid blue line with a white edge",
     "routeUnknown": "Grey striped overlay: an unchecked stretch of the selected route",
     "routeBarrier": "Red ring: a barrier on the selected route; the ring pulses unless reduced motion is on",
     "pendingReport": "Pending report: hollow blue circle with a question mark, not yet validated",
@@ -73,7 +71,10 @@
     "wheelsTitle": "Wheels as sensors",
     "wheelsVerified": "Double line like a rail, green edges with a white core: a footpath a wheelchair rolled over smoothly, verified by wheels",
     "wheelsTraversed": "Thin orange-brown line: wheels rolled here, but the ride was too rough or too short to verify it",
-    "wheelsJolt": "Hollow orange circle with an exclamation mark: a jolt felt by the wheels, a suspected barrier that still needs a photo"
+    "wheelsJolt": "Hollow orange circle with an exclamation mark: a jolt felt by the wheels, a suspected barrier that still needs a photo",
+    "routeStandard": "Standard: medium dashed grey line with a white edge",
+    "userDotTitle": "You",
+    "userDot": "Blue dot with a halo: your GPS position; a white dot with a blue ring is the simulated walk"
   },
   "severity": {
     "label": "Severity",
@@ -155,7 +156,45 @@
     "validate": "Validate",
     "missions": "Missions",
     "reach": "Reach Gap",
-    "ride": "Ride"
+    "ride": "Ride",
+    "stats": "Statistics",
+    "settings": "Settings",
+    "start": "Start",
+    "bannerLabel": "Next turn",
+    "arrivedShort": "Arrived",
+    "warningsLabel": "Warnings on the next stretch",
+    "simulating": "Simulated walk at {{speed}} m/s (not your real position)",
+    "simSpeed": "Simulation speed {{speed}} metres per second; press to change",
+    "simStop": "Stop simulation",
+    "simulate": "Simulate walk",
+    "farFromRoute": "You are more than 50 m from the route.",
+    "gps": {
+      "waiting": "Waiting for a GPS position…",
+      "ok": "GPS position found.",
+      "error": "GPS is unavailable or was denied.",
+      "unsupported": "This browser has no GPS."
+    },
+    "controls": "Navigation controls",
+    "mute": "Mute voice",
+    "unmute": "Unmute voice",
+    "recenter": "Re-centre on me",
+    "end": "End navigation",
+    "sheetLabel": "Trip progress",
+    "arrivedTitle": "You have arrived",
+    "contributePrompt": "Contribute photos of this trip? {{count}} photos were captured on the way.",
+    "contributeYes": "Yes, open Capture",
+    "contributeNo": "No thanks",
+    "arrival": "arrival",
+    "progress": "Trip progress",
+    "contributePaused": "photos paused during simulation",
+    "contributing": "{{count}} photos contributed",
+    "say": {
+      "start": "{{route}} route, confidence {{label}}, {{pct}} percent checked.",
+      "stepIn": "In {{distance}} metres, {{instruction}}",
+      "warning": "Warning: {{name}} ahead.",
+      "warningImpassable": "Warning: {{name}} ahead, impassable for you.",
+      "arrive": "You have arrived at your destination."
+    }
   },
   "wheels": {
     "verifiedTitle": "Verified by wheels",
@@ -288,16 +327,15 @@
   "map": {
     "label": "Map of accessible walking routes",
     "zoomIn": "Zoom in",
-    "zoomOut": "Zoom out"
+    "zoomOut": "Zoom out",
+    "toolsLabel": "Map tools"
   },
   "units": {
     "m": "m",
-    "min": "min"
+    "min": "min",
+    "km": "km"
   },
   "route": {
-    "open": "Plan route",
-    "title": "Plan a route",
-    "intro": "Compare what a normal map suggests with a route built for you.",
     "origin": "Origin",
     "destination": "Destination",
     "originSearch": "Origin: search a place or street",
@@ -316,14 +354,14 @@
     "notSet": "Not set",
     "setTo": "Set: {{label}}",
     "clearPoint": "Clear {{field}}",
-    "demoButton": "Riya's trip (demo)",
-    "demoHint": "Riya uses a wheelchair. Karkarduma metro to a friend's house, 800 m. See what a normal map misses.",
     "profile": {
       "label": "Who is travelling",
       "walker": "Walker",
       "wheelchair_manual": "Manual wheelchair",
       "elderly_walking_aid": "Elderly with walking aid",
-      "pram": "Pram"
+      "pram": "Pram",
+      "cognitive": "Dyslexic or autistic",
+      "blind_low_vision": "Blind or low vision"
     },
     "risk": {
       "label": "Risk tolerance",
@@ -336,10 +374,7 @@
     },
     "depart": "Departure time",
     "departHint": "Only the hour matters: some barriers (parked vehicles, vendors) come and go.",
-    "compare": "Compare routes",
-    "compareDisabled": "Set both an origin and a destination first.",
-    "loading": "Finding three routes…",
-    "clearResult": "Clear comparison",
+    "loading": "Finding two routes…",
     "errors": {
       "tooFar": "A point is too far from any known footpath (more than 150 m). Pick a point closer to a footpath on the map.",
       "demoUnknown": "The demo trip is not available on this API.",
@@ -352,24 +387,19 @@
       "street": "Street",
       "demo": "Demo"
     },
-    "compareTitle": "Three routes compared",
-    "cardsLabel": "Compared routes",
-    "tabsLabel": "Route cards",
-    "tabLabel": "Show card {{index}}: {{title}}",
+    "compareTitle": "Two routes compared",
+    "cardsLabel": "Routes",
     "departureHour": "Leaving around {{hour}}:00",
     "snapped": "{{field}} moved {{m}} m to the nearest footpath.",
     "mode": {
-      "shortest": {
-        "title": "Shortest",
-        "explain": "What a normal map does: fastest for a walker, ignores barriers."
-      },
-      "naive_accessible": {
-        "title": "Naive accessible",
-        "explain": "Avoids known barriers but treats never-seen footpaths as clear."
-      },
       "samaan": {
-        "title": "SAMAAN",
-        "explain": "Applies your profile's rules and penalises unchecked footpaths; honest about what was verified."
+        "title": "SAMAAN route",
+        "explain": "Applies your profile's rules and prefers checked footpaths; honest about what was verified."
+      },
+      "standard": {
+        "title": "Standard route",
+        "short": "What a normal map suggests",
+        "explain": "Fastest for a walker; ignores barriers and never-checked footpaths."
       }
     },
     "recommended": "Recommended",
@@ -395,11 +425,15 @@
     "unknownStretches_other": "{{count}} unchecked stretches, {{length}} m in total",
     "noUnknown": "Every footpath on this route has been checked.",
     "noRoute": "No route for this profile.",
-    "select": "Show on map",
-    "selected": "Shown on map",
-    "summary": "{{title}} route: {{length}} metres, {{minutes}} minutes, {{verified}} percent checked, {{barriers}}.",
+    "summary": "{{title}}: {{length}} metres, {{minutes}} minutes, {{verified}} percent checked, {{barriers}}, {{confidence}}. Press to show on the map.",
     "summaryNone": "{{title}}: no route for this profile.",
-    "mapSelected": "{{title}} route highlighted on the map."
+    "mapSelected": "{{title}} route highlighted on the map.",
+    "edit": "Edit",
+    "details": "Details: barriers and steps",
+    "impassableShort": "{{count}} impassable",
+    "checkedLine": "{{pct}}% checked · {{segments}} segments without recent imagery",
+    "selectedShort": "Shown on map",
+    "segmentsNoImagery": "{{count}} of {{total}} segments without recent imagery"
   },
   "user": {
     "title": "Who are you?",
@@ -691,5 +725,178 @@
       "badParams": "The reach request was invalid. Check the profile, time budget and risk.",
       "generic": "Could not compute the reach. The SAMAAN API is unreachable or returned an error."
     }
+  },
+  "tabs": {
+    "home": "Home",
+    "navigate": "Navigate",
+    "contribute": "Contribute",
+    "more": "More"
+  },
+  "more": {
+    "map": "Explore the data on the map: footpaths, barriers, layers and legend",
+    "validate": "Check other people's reports",
+    "missions": "Footpath stretches that most need a photo walk",
+    "reach": "How far a wheelchair user gets compared with a walker",
+    "ride": "Wheels as sensors: record a wheelchair ride",
+    "capture": "Photo walk with auto-capture",
+    "stats": "How much of the map is checked",
+    "settings": "Language, contrast, profile, who you are",
+    "about": "SAMAAN routes people around footpath barriers and keeps its map fresh with the photos travellers contribute."
+  },
+  "home": {
+    "greeting": "Namaste",
+    "greetingName": "Namaste, {{name}}",
+    "whereTo": "Where to?",
+    "from": "From",
+    "fromGps": "My location (GPS)",
+    "changeOrigin": "Change",
+    "modeLabel": "How do you want to be guided?",
+    "options": "Options: risk and departure time",
+    "go": {
+      "move": "Show routes",
+      "explore": "Start Explore",
+      "listen": "Start Listen"
+    },
+    "demo": "Try the demo trip",
+    "finding": "Finding routes…",
+    "goHint": "Choose a destination first.",
+    "errors": {
+      "noDestination": "Choose a destination first.",
+      "geoDenied": "Location permission was denied. Set an origin with Change, or try the demo trip.",
+      "geoUnavailable": "Your location is unavailable. Set an origin with Change, or try the demo trip."
+    }
+  },
+  "mode": {
+    "move": {
+      "title": "Move",
+      "line": "Map, two routes and turn-by-turn"
+    },
+    "explore": {
+      "title": "Explore",
+      "line": "Camera view with one big arrow"
+    },
+    "listen": {
+      "title": "Listen",
+      "line": "Spoken directions, voice control"
+    }
+  },
+  "confidence": {
+    "title": "Confidence",
+    "high": "high",
+    "medium": "medium",
+    "low": "low",
+    "summary": "confidence {{label}}, {{pct}} percent"
+  },
+  "step": {
+    "short": {
+      "depart": "Start here",
+      "straight": "Go straight",
+      "slight_left": "Bear left",
+      "left": "Turn left",
+      "sharp_left": "Sharp left",
+      "slight_right": "Bear right",
+      "right": "Turn right",
+      "sharp_right": "Sharp right",
+      "uturn": "Turn around",
+      "cross": "Cross the road",
+      "arrive": "You are here"
+    }
+  },
+  "explore": {
+    "title": "Explore mode",
+    "noCamera": "No camera here, so the map is shown instead.",
+    "simplify": "Simplify",
+    "arrowSr": "Arrow points {{deg}} degrees from straight ahead.",
+    "heading": {
+      "compass": "Arrow uses the compass.",
+      "travel": "Arrow uses your direction of travel.",
+      "route": "Arrow is relative to the route direction (no compass)."
+    }
+  },
+  "listen": {
+    "noStt": "Voice input not available",
+    "listening": "Listening… tap to stop",
+    "thinking": "One moment…",
+    "tapCommand": "Tap and say: repeat, where am I, or stop",
+    "tapAnswer": "Tap and say yes or no",
+    "tapToSpeak": "Tap and say where you want to go",
+    "noSpeech": "This browser has neither voice input nor speech output. Type your destination below; instructions appear as text.",
+    "noSttLong": "This browser has no voice input. Type your destination below; instructions are still spoken.",
+    "noTtsLong": "This browser cannot speak. Instructions appear as text in the box below.",
+    "heard": "Heard: {{text}}",
+    "micError": {
+      "denied": "Microphone permission was denied. Allow the microphone for this site, or type below.",
+      "no-speech": "I did not hear anything. Tap and try again.",
+      "network": "Voice recognition needs a network connection.",
+      "other": "Voice recognition failed. Tap and try again, or type below."
+    },
+    "typeDestination": "Or type your destination",
+    "find": "Find",
+    "confirmLabel": "Confirm destination",
+    "yes": "Yes, go to {{name}}",
+    "no": "No, another place",
+    "commandsLabel": "Voice commands as buttons",
+    "cmd": {
+      "repeat": "Repeat",
+      "where": "Where am I?",
+      "stop": "Stop"
+    },
+    "help": "Say a place name. Then say yes to go. While walking: repeat, where am I, stop. Double-tap the screen to hear the step again.",
+    "say": {
+      "where": "You are on {{street}}. In {{distance}}, {{instruction}}",
+      "unknownStreet": "an unnamed path",
+      "routing": "Finding a route to {{name}}.",
+      "tryDemo": "Say demo to try the demo trip.",
+      "stopped": "Navigation stopped.",
+      "unknownCommand": "Say repeat, where am I, or stop.",
+      "whereTo": "Where do you want to go?",
+      "sayYesOrNo": "Please say yes or no.",
+      "demoStarting": "Starting the demo trip.",
+      "cancelled": "Cancelled. Tap and say where you want to go.",
+      "found": "Found {{name}}. Say yes to go.",
+      "notFound": "No place found for {{query}}. Try another name.",
+      "searchFailed": "Search is not available right now."
+    }
+  },
+  "contribute": {
+    "title": "Contribute",
+    "intro": "SAMAAN only knows a footpath is clear if someone looked recently. Photos from your trips keep the map fresh for everyone.",
+    "toggle": "Contribute photos while I navigate",
+    "on": "On: a photo every 10 metres while you navigate, uploaded in the background (session nav-<date>).",
+    "off": "Off: no photos are taken while you navigate.",
+    "how": "Photos are taken only from your real GPS position, never during a simulated walk, and only while a trip is running.",
+    "captureHint": "Walk with the camera on and auto-capture",
+    "rideHint": "Mount the phone on a wheelchair; smooth stretches verify footpaths",
+    "missionsHint": "Where a photo walk helps most",
+    "reportHint": "Photograph a barrier where you stand",
+    "noCamera": "No camera available for contribution."
+  },
+  "stats": {
+    "title": "Statistics",
+    "refresh": "Refresh",
+    "intro": "Computed on this phone from the live map data.",
+    "footpaths": "footpath km checked",
+    "footpathsSub": "{{pct}}% of {{total}} km",
+    "footpathsSr": "Footpath checked: {{km}} of {{total}} kilometres, {{pct}} percent.",
+    "barriers": "barriers verified",
+    "barriersSub": "of {{total}} known · {{suspected}} suspected",
+    "barriersSr": "{{count}} active barriers of {{total}} known.",
+    "reports": "reports pending",
+    "reportsSub": "waiting for validation",
+    "reportsSr": "{{count}} reports pending validation.",
+    "reportsUnknown": "Pending reports unknown; the API did not answer.",
+    "reportsError": "could not load",
+    "wheels": "segments verified by wheels",
+    "wheelsSub": "of {{total}} rolled over",
+    "wheelsSr": "{{count}} footpath segments verified by wheels of {{total}} traversed.",
+    "lastConfidence": "Confidence of your last route",
+    "lastConfidenceSub": "{{route}}, {{pct}}% checked, started {{when}}",
+    "noTrip": "No trip started on this phone yet."
+  },
+  "settings": {
+    "title": "Settings",
+    "display": "Display",
+    "profilesFallback": "Profile list is the built-in default; the API did not answer /profiles.",
+    "setUser": "Set who you are"
   }
 }
