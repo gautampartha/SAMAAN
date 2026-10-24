@@ -22,7 +22,7 @@ from shapely import wkt
 from shapely.geometry import LineString, Point
 from sqlmodel import Session, select
 
-from api.models import Anchor, FootpathEdge, FootpathNode, Meta, RoadCentreline
+from api.models import Anchor, FootpathEdge, FootpathNode, Meta, Place, RoadCentreline
 from common.crs import METRIC, to_wgs84
 from common.paths import ROOT
 
@@ -198,6 +198,65 @@ def crossing_nodes(xml_path: Path, zone_cfg: dict[str, Any]) -> list[dict[str, A
     return out
 
 
+PLACE_KEYS = ("amenity", "shop", "office", "tourism", "leisure", "public_transport", "railway", "healthcare",
+              "building", "place", "landuse", "man_made")
+
+
+def extract_places(xml_path: Path, zone_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Named features for search: named nodes with a place-like tag, named ways (buildings, parks,
+    streets) at their centroid. Streets are deduplicated by name."""
+    b = zone_cfg["bbox"]
+    nodes: dict[int, tuple[float, float]] = {}
+    out: list[dict[str, Any]] = []
+    streets: dict[str, list[tuple[float, float]]] = {}
+    way_places: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for _, el in ET.iterparse(xml_path, events=("end",)):
+        if el.tag == "node":
+            lat, lon = float(el.get("lat")), float(el.get("lon"))
+            nodes[int(el.get("id"))] = (lat, lon)
+            tags = {t.get("k"): t.get("v") for t in el.findall("tag")}
+            name = tags.get("name")
+            if name and any(k in tags for k in PLACE_KEYS) and b["south"] <= lat <= b["north"] and b["west"] <= lon <= b["east"]:
+                kind = next((f"{k}={tags[k]}" for k in PLACE_KEYS if k in tags), "place")
+                out.append({"osm_id": int(el.get("id")), "osm_type": "node", "kind": kind, "name_en": tags.get("name:en", name),
+                            "name_hi": tags.get("name:hi"), "lat": lat, "lon": lon})
+            el.clear()
+        elif el.tag == "way":
+            way_id = int(el.get("id"))
+            tags = {t.get("k"): t.get("v") for t in el.findall("tag")}
+            name = tags.get("name")
+            refs = [int(nd.get("ref")) for nd in el.findall("nd")]
+            pts = [nodes[r] for r in refs if r in nodes]
+            el.clear()
+            if not name or not pts:
+                continue
+            lat = sum(p[0] for p in pts) / len(pts)
+            lon = sum(p[1] for p in pts) / len(pts)
+            if not (b["south"] <= lat <= b["north"] and b["west"] <= lon <= b["east"]):
+                continue
+            if "highway" in tags:
+                streets.setdefault(name, []).append((lat, lon))
+                continue
+            if any(k in tags for k in PLACE_KEYS):
+                kind = next((f"{k}={tags[k]}" for k in PLACE_KEYS if k in tags), "place")
+                way_places.setdefault((tags.get("name:en", name), kind), []).append(
+                    {"osm_id": way_id, "name_hi": tags.get("name:hi"), "lat": lat, "lon": lon})
+    for (name_en, kind), parts in way_places.items():  # same-name ways (e.g. a rail line in segments) -> one place
+        out.append({"osm_id": parts[0]["osm_id"], "osm_type": "way", "kind": kind, "name_en": name_en,
+                    "name_hi": next((x["name_hi"] for x in parts if x["name_hi"]), None),
+                    "lat": sum(x["lat"] for x in parts) / len(parts), "lon": sum(x["lon"] for x in parts) / len(parts)})
+    for name, pts in streets.items():
+        out.append({"osm_id": None, "osm_type": "way", "kind": "street", "name_en": name, "name_hi": None,
+                    "lat": sum(p[0] for p in pts) / len(pts), "lon": sum(p[1] for p in pts) / len(pts)})
+    return out
+
+
+def write_places(places: list[dict[str, Any]], session: Session) -> None:
+    for pl in places:
+        session.add(Place(**pl))
+    session.commit()
+
+
 def discover_anchors(xml_path: Path, zone_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     """Find anchor POIs (metro entrances, bus stops, hospitals, schools) as OSM nodes in the bbox."""
     disc = zone_cfg.get("anchor_discovery", {})
@@ -292,6 +351,7 @@ def build_zone_graph(zone_cfg: dict[str, Any], session: Session, force_download:
     F, stats = synthesize(G_und, crossing_nodes(xml_path, zone_cfg), synthesis_cfg)
     write_graph(F, session, synthetic=False)
     write_zone_anchors(xml_path, zone_cfg, session)
+    write_places(extract_places(xml_path, zone_cfg), session)
     write_meta(
         session,
         osm_attribution=zone_cfg["osm"]["attribution"],

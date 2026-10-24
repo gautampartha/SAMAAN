@@ -22,7 +22,13 @@ from api.db import reset_db
 from common import config
 from common.crs import METRIC, to_metric
 from common.paths import ROOT
-from pipeline.graph.osm import write_graph, write_meta, write_zone_anchors
+from pipeline.graph.osm import (
+    extract_places,
+    write_graph,
+    write_meta,
+    write_places,
+    write_zone_anchors,
+)
 from pipeline.graph.validate import to_markdown, validate
 
 log = logging.getLogger(__name__)
@@ -97,6 +103,8 @@ def import_corrected(path: Path, session: Session, zone_cfg: dict[str, Any] | No
     write_graph(F, session, synthetic=False)
     xml = ROOT / zone_cfg["osm"]["raw_cache"]
     write_zone_anchors(xml if xml.exists() else None, zone_cfg, session)
+    if xml.exists():
+        write_places(extract_places(xml, zone_cfg), session)
     write_meta(session, graph_source=f"human-corrected GeoJSON {path}", osm_attribution=zone_cfg["osm"]["attribution"],
                crs_metric=METRIC)
     return validate(session)

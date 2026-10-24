@@ -10,22 +10,29 @@ import maplibregl, {
 } from 'maplibre-gl';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import type { FeatureCollection, Point } from 'geojson';
+import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import {
   imagePhotoUrl,
   localizedName,
+  photoUrl,
   LAYER_KEYS,
+  ROUTE_MODES,
   type AnchorProps,
   type BarrierFeature,
   type BarrierProps,
   type CoverageProps,
   type DemoProps,
+  type FootpathFC,
   type ImageProps,
   type LayerData,
   type LayerKey,
+  type RouteMode,
+  type RouteResponse,
   type Zone,
 } from '../api';
 import type { Lang } from '../i18n';
+import type { PlannerPoint, PointRole } from '../routePlanner';
+import { ROUTE_ENDPOINT_COLOURS, ROUTE_STYLES, UNKNOWN_OVERLAY_COLOUR } from './routeStyles';
 
 export interface BarrierSelection {
   feature: BarrierFeature;
@@ -42,6 +49,14 @@ interface MapViewProps {
   lang: Lang;
   selection: BarrierSelection | null;
   onBasemapError: () => void;
+  /** Route planner: compared routes, the highlighted one, and map-pick mode. */
+  routes: RouteResponse | null;
+  selectedRoute: RouteMode | null;
+  onSelectRoute: (mode: RouteMode) => void;
+  origin: PlannerPoint | null;
+  destination: PlannerPoint | null;
+  pickMode: PointRole | null;
+  onPick: (role: PointRole, lat: number, lon: number) => void;
 }
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -63,6 +78,16 @@ const LAYER_IDS: Record<LayerKey, string[]> = {
 
 /** Point layers that open popups; a coverage click is ignored when one of these is hit too. */
 const POINT_CLICK_LAYERS = ['barriers', 'anchors', 'demo-endpoints', 'images'];
+
+// Route planner sources/layers (not user-toggleable; driven by the planner state).
+const ROUTE_SOURCES = ['routes', 'route-endpoints', 'route-unknown', 'route-barriers'] as const;
+const ROUTE_LINE_LAYERS: Record<RouteMode, string[]> = {
+  shortest: ['route-shortest'],
+  naive_accessible: ['route-naive'],
+  samaan: ['route-samaan-casing', 'route-samaan'],
+};
+const ROUTE_CLICK_LAYERS = ['route-shortest', 'route-naive', 'route-samaan'];
+const RING_RADIUS = 18;
 
 // Image colours per source (also named in words in the legend).
 export const IMAGE_COLOURS = { mapillary: '#00838f', own: '#ad1457', report: '#5d4037', other: '#616161' } as const;
@@ -145,6 +170,51 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     filter: ['==', ['get', 'state'], 'blocked'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#c62828', 'line-width': 6, 'line-dasharray': [0.1, 1.8] },
+  });
+
+  // --- Compared routes: three styles that differ in width AND dash, not only colour ---
+  const sh = ROUTE_STYLES.shortest;
+  const na = ROUTE_STYLES.naive_accessible;
+  const sa = ROUTE_STYLES.samaan;
+  add({
+    id: 'route-samaan-casing',
+    type: 'line',
+    source: 'routes',
+    filter: ['==', ['get', 'mode'], 'samaan'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': sa.width + 4 },
+  });
+  add({
+    id: 'route-samaan',
+    type: 'line',
+    source: 'routes',
+    filter: ['==', ['get', 'mode'], 'samaan'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': sa.colour, 'line-width': sa.width },
+  });
+  add({
+    id: 'route-naive',
+    type: 'line',
+    source: 'routes',
+    filter: ['==', ['get', 'mode'], 'naive_accessible'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': na.colour, 'line-width': na.width, 'line-dasharray': na.dash },
+  });
+  add({
+    id: 'route-shortest',
+    type: 'line',
+    source: 'routes',
+    filter: ['==', ['get', 'mode'], 'shortest'],
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': sh.colour, 'line-width': sh.width, 'line-dasharray': sh.dash },
+  });
+  // Unknown (never checked) stretches of the highlighted route: grey stripes on top of it.
+  add({
+    id: 'route-unknown',
+    type: 'line',
+    source: 'route-unknown',
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': UNKNOWN_OVERLAY_COLOUR, 'line-width': sa.width + 2, 'line-dasharray': [1, 1], 'line-opacity': 0.85 },
   });
 
   // --- Demo route: wide dashed purple line with white casing + A/B endpoints ---
@@ -301,6 +371,141 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
   }
 }
 
+function addRouteSources(map: MapLibreMap): void {
+  for (const key of ROUTE_SOURCES) {
+    if (!map.getSource(key)) map.addSource(key, { type: 'geojson', data: EMPTY_FC });
+  }
+}
+
+/** Layers that sit above every data layer: barrier rings on the highlighted route and the A/B pins. */
+function addRouteTopLayers(map: MapLibreMap): void {
+  const hasGlyphs = Boolean(map.getStyle()?.glyphs);
+  const add = (layer: AddLayerObject) => {
+    if (!map.getLayer(layer.id)) map.addLayer(layer);
+  };
+  add({
+    id: 'route-barriers-ring',
+    type: 'circle',
+    source: 'route-barriers',
+    paint: {
+      'circle-radius': RING_RADIUS,
+      'circle-color': 'rgba(0,0,0,0)',
+      'circle-stroke-color': ['case', ['get', 'impassable_for_profile'], '#b71c1c', '#ef6c00'],
+      'circle-stroke-width': 4,
+      'circle-stroke-opacity': 0.9,
+    },
+  });
+  add({
+    id: 'route-barriers-dot',
+    type: 'circle',
+    source: 'route-barriers',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['get', 'severity'], 1, 6, 5, 11],
+      'circle-color': ['step', ['get', 'severity'], '#f9a825', 3, '#ef6c00', 4, '#b71c1c'],
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 2,
+    },
+  });
+  add({
+    id: 'route-endpoints',
+    type: 'circle',
+    source: 'route-endpoints',
+    paint: {
+      'circle-radius': 13,
+      'circle-color': ['match', ['get', 'role'], 'origin', ROUTE_ENDPOINT_COLOURS.origin, ROUTE_ENDPOINT_COLOURS.destination],
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 3,
+    },
+  });
+  if (hasGlyphs) {
+    add({
+      id: 'route-endpoints-label',
+      type: 'symbol',
+      source: 'route-endpoints',
+      layout: {
+        'text-field': ['match', ['get', 'role'], 'origin', 'A', 'B'],
+        'text-font': TEXT_FONT,
+        'text-size': 14,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': '#ffffff' },
+    });
+  }
+}
+
+function routesToFC(routes: RouteResponse | null): FeatureCollection<LineString, { mode: RouteMode }> {
+  const features: Feature<LineString, { mode: RouteMode }>[] = [];
+  if (routes) {
+    for (const mode of ROUTE_MODES) {
+      const r = routes.routes[mode];
+      if (r?.geometry) features.push({ type: 'Feature', geometry: r.geometry, properties: { mode } });
+    }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function endpointsToFC(origin: PlannerPoint | null, destination: PlannerPoint | null): FeatureCollection<Point, { role: PointRole }> {
+  const features: Feature<Point, { role: PointRole }>[] = [];
+  if (origin) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [origin.lon, origin.lat] }, properties: { role: 'origin' } });
+  if (destination) {
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [destination.lon, destination.lat] }, properties: { role: 'destination' } });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/** Unknown stretches drawn along the real footpath geometry when the edge ids are known, else start→end. */
+function unknownToFC(routes: RouteResponse | null, selected: RouteMode | null, footpaths: FootpathFC | undefined): FeatureCollection<LineString> {
+  const features: Feature<LineString>[] = [];
+  const r = selected && routes ? routes.routes[selected] : null;
+  if (r) {
+    const byId = new globalThis.Map<number, Feature<LineString>>();
+    for (const f of footpaths?.features ?? []) byId.set(f.properties.id, f);
+    for (const st of r.unknown_stretches) {
+      let found = 0;
+      for (const id of st.edge_ids ?? []) {
+        const f = byId.get(id);
+        if (f) {
+          features.push({ type: 'Feature', geometry: f.geometry, properties: {} });
+          found++;
+        }
+      }
+      if (found === 0) {
+        features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [st.start, st.end] }, properties: { length_m: st.length_m } });
+      }
+    }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function routeBarriersToFC(routes: RouteResponse | null, selected: RouteMode | null): FeatureCollection<Point> {
+  const r = selected && routes ? routes.routes[selected] : null;
+  return {
+    type: 'FeatureCollection',
+    features: (r?.barriers ?? []).map((b) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [b.lon, b.lat] },
+      properties: { id: b.id, severity: b.severity, impassable_for_profile: Boolean(b.impassable_for_profile) },
+    })),
+  };
+}
+
+function boundsOf(lines: LineString[]): [[number, number], [number, number]] | null {
+  let w = Infinity;
+  let s = Infinity;
+  let e = -Infinity;
+  let n = -Infinity;
+  for (const line of lines) {
+    for (const [x, y] of line.coordinates) {
+      if (x < w) w = x;
+      if (x > e) e = x;
+      if (y < s) s = y;
+      if (y > n) n = y;
+    }
+  }
+  return Number.isFinite(w) ? [[w, s], [e, n]] : null;
+}
+
 // ---------- Popup content (built with DOM APIs, never innerHTML) ----------
 
 function el(tag: string, className?: string, text?: string): HTMLElement {
@@ -330,6 +535,19 @@ function normaliseBarrier(raw: Record<string, unknown>): BarrierProps {
   } else if (!Array.isArray(tags)) {
     p.tags = [];
   }
+  const photos = (raw as { photo_urls?: unknown }).photo_urls;
+  if (typeof photos === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(photos);
+      p.photo_urls = Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      p.photo_urls = [];
+    }
+  } else if (Array.isArray(photos)) {
+    p.photo_urls = photos.filter((x): x is string => typeof x === 'string');
+  } else {
+    delete p.photo_urls;
+  }
   return p;
 }
 
@@ -345,6 +563,22 @@ function barrierPopupContent(p: BarrierProps, lang: Lang, t: TFunction): HTMLEle
   if (p.tags.length > 0) row(dl, t('popup.tags'), p.tags.join(', '));
   if (typeof p.confidence === 'number') row(dl, t('popup.confidence'), `${Math.round(p.confidence * 100)}%`);
   root.appendChild(dl);
+  // Photo thumbnails only when the API sends `photo_urls`; older builds do not.
+  if (Array.isArray(p.photo_urls) && p.photo_urls.length > 0) {
+    const strip = el('div', 'popup__photos');
+    for (const url of p.photo_urls.slice(0, 4)) {
+      const img = document.createElement('img');
+      img.className = 'popup__thumb';
+      img.src = photoUrl(url);
+      img.alt = t('route.photoAlt', { name: localizedName(p, lang) });
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.width = 72;
+      img.height = 72;
+      strip.appendChild(img);
+    }
+    root.appendChild(strip);
+  }
   if (p.synthetic) root.appendChild(el('span', 'badge badge--synthetic', t('badge.synthetic')));
   return root;
 }
@@ -446,22 +680,44 @@ function prefersReducedMotion(): boolean {
 
 // ---------- Component ----------
 
-export default function MapView({ zone, zoneSettled, data, visible, lang, selection, onBasemapError }: MapViewProps) {
+export default function MapView({
+  zone,
+  zoneSettled,
+  data,
+  visible,
+  lang,
+  selection,
+  onBasemapError,
+  routes,
+  selectedRoute,
+  onSelectRoute,
+  origin,
+  destination,
+  pickMode,
+  onPick,
+}: MapViewProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<Popup | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Latest language / translator for event handlers registered once.
+  // Latest language / translator / callbacks for event handlers registered once.
   const langRef = useRef(lang);
   const tRef = useRef(t);
   const errorRef = useRef(onBasemapError);
+  const pickRef = useRef(pickMode);
+  const onPickRef = useRef(onPick);
+  const onSelectRouteRef = useRef(onSelectRoute);
   langRef.current = lang;
   tRef.current = t;
   errorRef.current = onBasemapError;
+  pickRef.current = pickMode;
+  onPickRef.current = onPick;
+  onSelectRouteRef.current = onSelectRoute;
 
   const openPopup = (map: MapLibreMap, lngLat: [number, number], content: HTMLElement) => {
+    if (pickRef.current) return; // the click is setting a planner point instead
     popupRef.current?.remove();
     const popup = new Popup({ closeButton: true, closeOnClick: true, maxWidth: '300px', focusAfterOpen: true })
       .setLngLat(lngLat)
@@ -516,15 +772,35 @@ export default function MapView({ zone, zoneSettled, data, visible, lang, select
     });
 
     map.once('load', () => {
+      addRouteSources(map);
       addSourcesAndLayers(map, langRef.current);
+      addRouteTopLayers(map);
 
       const pointer = (on: boolean) => () => {
+        if (pickRef.current) return;
         map.getCanvas().style.cursor = on ? 'pointer' : '';
       };
-      for (const id of POINT_CLICK_LAYERS) {
+      for (const id of [...POINT_CLICK_LAYERS, ...ROUTE_CLICK_LAYERS]) {
         map.on('mouseenter', id, pointer(true));
         map.on('mouseleave', id, pointer(false));
       }
+
+      // Pick-on-map: while a planner field is in pick mode, any click sets that point and nothing else.
+      map.on('click', (e) => {
+        const role = pickRef.current;
+        if (!role) return;
+        onPickRef.current(role, e.lngLat.lat, e.lngLat.lng);
+      });
+      // Clicking a compared route line selects its card.
+      map.on('click', 'route-samaan', () => {
+        if (!pickRef.current) onSelectRouteRef.current('samaan');
+      });
+      map.on('click', 'route-naive', () => {
+        if (!pickRef.current) onSelectRouteRef.current('naive_accessible');
+      });
+      map.on('click', 'route-shortest', () => {
+        if (!pickRef.current) onSelectRouteRef.current('shortest');
+      });
 
       const first = (e: MapLayerMouseEvent): MapGeoJSONFeature | undefined => e.features?.[0];
       const coords = (f: MapGeoJSONFeature): [number, number] => {
@@ -606,15 +882,90 @@ export default function MapView({ zone, zoneSettled, data, visible, lang, select
     }
   }, [visible, ready]);
 
+  // Route planner: lines, A/B pins, unknown stretches and barrier rings of the highlighted route.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    (map.getSource('routes') as GeoJSONSource | undefined)?.setData(routesToFC(routes));
+    (map.getSource('route-unknown') as GeoJSONSource | undefined)?.setData(unknownToFC(routes, selectedRoute, data.footpaths));
+    (map.getSource('route-barriers') as GeoJSONSource | undefined)?.setData(routeBarriersToFC(routes, selectedRoute));
+    // Dim the two routes that are not selected (opacity + the selected one stays full width).
+    for (const mode of ROUTE_MODES) {
+      const dim = selectedRoute !== null && selectedRoute !== mode && routes !== null;
+      for (const id of ROUTE_LINE_LAYERS[mode]) {
+        if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', dim ? 0.3 : 1);
+      }
+    }
+  }, [routes, selectedRoute, data.footpaths, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    (map.getSource('route-endpoints') as GeoJSONSource | undefined)?.setData(endpointsToFC(origin, destination));
+  }, [origin, destination, ready]);
+
+  // Fit the map to the selected route (or to all three when nothing is selected yet).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !routes) return;
+    const lines: LineString[] = [];
+    const target = selectedRoute ? routes.routes[selectedRoute] : null;
+    if (target) lines.push(target.geometry);
+    else for (const mode of ROUTE_MODES) if (routes.routes[mode]) lines.push(routes.routes[mode]!.geometry);
+    const b = boundsOf(lines);
+    if (!b) return;
+    const narrow = window.matchMedia('(max-width: 767px)').matches;
+    const h = map.getContainer().clientHeight;
+    const padding = narrow
+      ? { top: 32, left: 24, right: 24, bottom: Math.round(h * 0.6) + 16 }
+      : { top: 40, left: 420, right: 40, bottom: Math.round(h * 0.46) + 24 };
+    map.fitBounds(b, { padding, duration: prefersReducedMotion() ? 0 : 700, maxZoom: 18 });
+  }, [routes, selectedRoute, ready]);
+
+  // Pulse the barrier rings (static when the user prefers reduced motion).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const hasRings = Boolean(selectedRoute && routes?.routes[selectedRoute]?.barriers.length);
+    if (!hasRings || prefersReducedMotion()) {
+      if (map.getLayer('route-barriers-ring')) {
+        map.setPaintProperty('route-barriers-ring', 'circle-radius', RING_RADIUS);
+        map.setPaintProperty('route-barriers-ring', 'circle-stroke-opacity', 0.9);
+      }
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const phase = ((now - start) % 1400) / 1400;
+      const wave = (Math.sin(phase * Math.PI * 2) + 1) / 2;
+      if (map.getLayer('route-barriers-ring')) {
+        map.setPaintProperty('route-barriers-ring', 'circle-radius', RING_RADIUS - 4 + wave * 8);
+        map.setPaintProperty('route-barriers-ring', 'circle-stroke-opacity', 0.55 + wave * 0.45);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [routes, selectedRoute, ready]);
+
+  // Pick mode: crosshair cursor and a canvas label that says what a click does.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    map.getCanvas().style.cursor = pickMode ? 'crosshair' : '';
+    const label = pickMode ? `${t('map.label')}. ${t('route.pickHint', { field: t(`route.${pickMode}`).toLocaleLowerCase() })}` : t('map.label');
+    map.getCanvas().setAttribute('aria-label', label);
+  }, [pickMode, ready, t, lang]);
+
   // Language: relabel anchors, canvas label; close any open popup (its text is stale).
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     if (map.getLayer('anchors-label')) map.setLayoutProperty('anchors-label', 'text-field', ['get', nameProp(lang)]);
-    map.getCanvas().setAttribute('aria-label', t('map.label'));
     popupRef.current?.remove();
     popupRef.current = null;
-  }, [lang, ready, t]);
+  }, [lang, ready]);
 
   // Fly to a barrier chosen from the list and open its popup.
   useEffect(() => {

@@ -1,11 +1,15 @@
+import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LAYER_KEYS, type LayerKey } from '../api';
 import { IMAGE_COLOURS } from './MapView';
+import { BarrierRingSwatch, ROUTE_ENDPOINT_COLOURS, RouteSwatch, UnknownOverlaySwatch } from './routeStyles';
 
 interface LegendProps {
   visible: Record<LayerKey, boolean>;
   onToggle: (key: LayerKey) => void;
   onClose: () => void;
+  /** Focused when the panel opens; the close button returns focus to the opener. */
+  headingRef?: RefObject<HTMLHeadingElement>;
 }
 
 /** Small inline SVG swatches. Each legend row also carries a text description
@@ -57,13 +61,13 @@ function EndpointSwatch({ colour, label }: { colour: string; label: string }) {
   );
 }
 
-export default function Legend({ visible, onToggle, onClose }: LegendProps) {
+export default function Legend({ visible, onToggle, onClose, headingRef }: LegendProps) {
   const { t } = useTranslation();
 
   return (
     <div className="panel__inner">
       <div className="panel__head">
-        <h2 id="legend-title" className="panel__title">{t('panels.legend')}</h2>
+        <h2 id="legend-title" className="panel__title" ref={headingRef} tabIndex={-1}>{t('panels.legend')}</h2>
         <button type="button" className="btn btn--icon" onClick={onClose} aria-label={t('panels.close')}>
           <span aria-hidden="true">×</span>
         </button>
@@ -78,6 +82,38 @@ export default function Legend({ visible, onToggle, onClose }: LegendProps) {
           </label>
         ))}
       </fieldset>
+
+      <h3 className="panel__subtitle">{t('legend.routeTitle')}</h3>
+      <dl className="legend">
+        <div className="legend__row">
+          <dt><RouteSwatch mode="shortest" /> {t('route.mode.shortest.title')}</dt>
+          <dd>{t('legend.routeShortest')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><RouteSwatch mode="naive_accessible" /> {t('route.mode.naive_accessible.title')}</dt>
+          <dd>{t('legend.routeNaive')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><RouteSwatch mode="samaan" /> {t('route.mode.samaan.title')}</dt>
+          <dd>{t('legend.routeSamaan')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><UnknownOverlaySwatch /> {t('state.unknown')}</dt>
+          <dd>{t('legend.routeUnknown')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><BarrierRingSwatch /> {t('layers.barriers')}</dt>
+          <dd>{t('legend.routeBarrier')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><EndpointSwatch colour={ROUTE_ENDPOINT_COLOURS.origin} label="A" /> {t('route.origin')}</dt>
+          <dd>{t('legend.demoOrigin')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><EndpointSwatch colour={ROUTE_ENDPOINT_COLOURS.destination} label="B" /> {t('route.destination')}</dt>
+          <dd>{t('legend.demoDestination')}</dd>
+        </div>
+      </dl>
 
       <h3 className="panel__subtitle">{t('legend.title')}</h3>
       <dl className="legend">

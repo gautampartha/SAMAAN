@@ -550,5 +550,70 @@ when real data replaces the seed; they only show the three-way comparison works 
 
 ---
 
-## Phase P6 — Web app core
+## Phase P6 — Web app core (2026-10-24) — done
+
+### Plan
+Make the map demo-able on a phone: a route planner (search, pick on map, my location, the
+"Riya's trip" demo button, profile + risk + departure time), the three-panel comparison
+(length, ETA, verified/unknown/blocked bar, barriers with photos, unknown stretches), three
+distinguishable route styles on the map, barrier photos in popups, Hindi strings for all of it,
+and an accessibility pass (plan 6.11: labels, focus order, Escape, 48 px, contrast, reduced
+motion, screen-reader summaries, keyboard-only flow). Backend: a `place` table of named OSM
+features in the zone (shops, schools, hospitals, stations, parks, streets) filled by the graph
+build, and `GET /search` over places, anchors, streets and the demo destination.
+
+### What was built
+- Backend: `place` table filled from the cached OSM XML by the graph build (named nodes with a
+  place-like tag, named ways at their centroid, same-name ways merged, streets deduplicated by
+  name; 46 places in the zone) and `GET /search?q=&limit=` ranking anchors, the demo destination,
+  places and streets by prefix / word-start / substring match with en/hi names and subtitles.
+- Web (route planner on the map page, opened with "Plan route"): origin/destination fields with
+  a debounced search combobox (listbox, keyboard navigation), "Pick on map" toggle, "Use my
+  location"; the **"Riya's trip (demo)"** button; profile radios (walker, manual wheelchair,
+  elderly with walking aid, pram), risk radios with one-line explanations, departure time
+  (local offset sent, so the API sees the local hour); profile/risk persisted. **Three-panel
+  comparison**: on phones a snap-scrolling strip with "1 Shortest / 2 Naive / 3 SAMAAN" tabs, on
+  wider screens three cards docked under the map; each card has a screen-reader summary, mode
+  explanation, length, ETA, a stacked verified/never-seen/blocked bar (`role="img"` + text), barrier
+  count with impassable count, barrier rows (localised name, severity text, permanent/temporary,
+  "likely present at this hour (77 %)", photo thumbnails when present), unknown stretches,
+  "Show on map"; SAMAAN card marked Recommended with a thicker border; null route → message;
+  synthetic badge. Map: three route styles distinguishable without colour (thin dashed, medium
+  dotted, thick solid with casing), A/B pins, pulsing rings on the selected route's barriers
+  (static under reduced motion), striped overlay on unknown stretches drawn on the real footpath
+  geometry, non-selected routes dimmed, clicking a line selects its card. Barrier popups show
+  photos when the layer carries `photo_urls`.
+- Accessibility pass (plan 6.11): focus moves to a panel's heading on open and back to the opener
+  on close, Escape closes panels, 48 px targets throughout, visible focus, contrast tokens in
+  both themes, reduced motion respected, `lang` attributes, keyboard-only flow (Plan route →
+  Riya's trip → select a card → Escape) verified, no horizontal scroll at 375 px.
+- Verified live against the API in the desktop app's browser at 375 px and 800 px: Riya's trip
+  returns the three routes; the SAMAAN card shows 821 m, 19 min, 99 % checked, a kerb ramp and
+  time-weighted two-wheelers; no console errors. (Seeded overlay, illustrative only.)
+- Tests: 98 passing (place extraction incl. same-name merging, search ranking and localisation).
+
+### Decisions taken alone
+- Search is substring-based over a local table (no external geocoder), so the demo works offline.
+- The static demo-path layer switches off when a comparison loads (it looks like the SAMAAN
+  line); it can be re-enabled in the legend.
+- Planner and barrier list are mutually exclusive panels; on phones only one bottom sheet is open.
+
+### Open issues
+- The desktop breakpoint starts at 768 px, so an 800 px pane still shows the phone-style docked
+  strip rather than three side-by-side cards; on a laptop screen the three-column layout applies.
+- The route cards do not yet show per-barrier `confidence` or tags (available in the API).
+
+### Human tasks (P6)
+18. **Review the new Hindi strings** (15 min) in `web/src/i18n/hi.json` `route.*`: the agent
+    was unsure about "सरल सुलभ" (naive accessible), "जोखिम सहनशीलता" (risk tolerance),
+    "लचीला"/"सख़्त" (relaxed/strict), "कभी नहीं देखा" (never seen), "जाँचा गया"/"अनजाँचा"
+    (checked/unchecked), "बच्चा-गाड़ी (प्रैम)", "छड़ी या वॉकर वाले बुज़ुर्ग", and the gendered
+    "पार नहीं की जा सकती".
+19. **Phone test** (10 min): open the app on an Android phone over the dev server (`make web`
+    with `--host`, same Wi-Fi) and run Plan route → Riya's trip → swipe the three cards; note
+    anything hard to tap or read.
+
+---
+
+## Phase P7 — Report, Validate, Missions
 _Not started. Waiting for "go"._

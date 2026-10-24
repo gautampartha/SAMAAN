@@ -919,3 +919,518 @@ body {
 :root[data-theme="high-contrast"] .popup__note {
   color: #ffffff;
 }
+
+/* ---------- Route planner dock ----------
+   Phone: one bottom sheet (planner, then the comparison) so everything scrolls vertically.
+   Desktop: planner in a left column; the comparison docks along the bottom of the map
+   with three cards side by side. The dock itself lets clicks through to the map. */
+.route-dock {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  color: var(--fg);
+  border: 2px solid var(--border);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow);
+}
+.route-dock .panel {
+  position: static;
+  max-height: none;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+.route-dock .panel--compare {
+  border-top: 2px solid var(--border);
+}
+@media (min-width: 768px) {
+  .route-dock {
+    inset: 12px;
+    max-height: none;
+    display: grid;
+    grid-template-columns: 380px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 12px;
+    overflow: visible;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    pointer-events: none;
+  }
+  .route-dock .panel {
+    pointer-events: auto;
+    position: relative;
+    overflow: auto;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    background: var(--panel);
+  }
+  .route-dock .panel--route {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: auto;
+    max-height: 100%;
+  }
+  .route-dock .panel--compare {
+    grid-column: 2;
+    grid-row: 2;
+    width: auto;
+    max-height: 46vh;
+    margin-bottom: 36px; /* keep the map attribution visible */
+  }
+  /* The legend shares the right edge with the comparison strip; keep it short when the planner is open. */
+  .main--planner .panel--legend {
+    max-height: 48%;
+    z-index: 7;
+  }
+}
+
+/* ---------- Planner form ---------- */
+.planner {
+  display: grid;
+  gap: 10px;
+}
+.planner .panel__hint {
+  margin: 0;
+}
+.planner__demo {
+  width: 100%;
+  min-height: 56px;
+  font-size: 1.05rem;
+  white-space: normal;
+}
+.planner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.planner__actions .btn {
+  flex: 1 1 auto;
+}
+.place {
+  display: grid;
+  gap: 6px;
+  position: relative;
+}
+.place__row {
+  display: flex;
+  gap: 6px;
+}
+.place__input,
+.field input[type="time"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0 12px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+}
+.place__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  max-height: 280px;
+  overflow: auto;
+}
+.place__option,
+.place__empty {
+  min-height: var(--tap);
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  cursor: pointer;
+}
+.place__option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+.place__optionName {
+  font-weight: 600;
+}
+.place__optionMeta,
+.place__status,
+.place__hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+}
+.place__empty {
+  color: var(--muted);
+  cursor: default;
+}
+.place__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.place__actions .btn {
+  flex: 1 1 auto;
+  white-space: normal;
+}
+.place__error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--error-bg);
+  color: var(--error-fg);
+  border: 2px solid var(--error-fg);
+  font-weight: 600;
+}
+
+/* Radio groups (profile / risk): the whole row is the target. */
+.choices {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 0;
+  padding: 4px 8px 6px;
+  display: grid;
+  gap: 2px;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.choice:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.choice input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.choice__glyph {
+  font-size: 1.3rem;
+  width: 1.6em;
+  text-align: center;
+  flex: none;
+}
+.choice__text {
+  display: flex;
+  flex-direction: column;
+}
+.choice__name {
+  font-weight: 600;
+}
+.choice__hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.choice:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.choice:has(input:checked) .choice__name,
+.choice:has(input:checked) .choice__text {
+  font-weight: 700;
+}
+
+/* Pick-on-map banner shown while the phone sheet is closed. */
+.banner--pick {
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel);
+  color: var(--fg);
+  border: 2px solid var(--accent);
+}
+
+/* ---------- Comparison ---------- */
+.compare {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.compare__head .panel__hint {
+  margin: 0;
+}
+.compare__tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.compare__tab {
+  white-space: normal;
+  line-height: 1.15;
+  padding: 0 8px;
+}
+.compare__tab[aria-current="true"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
+}
+.compare__strip {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.compare__cell {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+  display: flex;
+}
+@media (min-width: 768px) {
+  .compare__tabs {
+    display: none;
+  }
+  .compare__strip {
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .compare__cell {
+    flex: 1 1 0;
+  }
+}
+.rcard {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  min-width: 0;
+}
+/* SAMAAN gets a thicker border plus the "Recommended" badge, so emphasis is not colour-only. */
+.rcard--samaan {
+  border-width: 3px;
+  border-color: color-mix(in srgb, var(--fg) 70%, var(--border));
+}
+.rcard--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+.rcard__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.rcard__title {
+  margin: 0;
+  font-size: 1.05rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rcard__title:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.rcard__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  font-size: 0.9rem;
+  font-weight: 700;
+  flex: none;
+}
+.rcard__explain,
+.rcard__note {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.rcard__stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.rcard__stats div {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.rcard__stats dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.rcard__stats dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rcard__barriers {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+.rcard__impassable {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--error-bg);
+  color: var(--error-fg);
+  border: 2px solid var(--error-fg);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.rcard__select {
+  margin-top: auto;
+  width: 100%;
+}
+.rcard__none {
+  margin: 0;
+  padding: 12px;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  font-weight: 600;
+}
+.badge--recommended {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 1.5px solid var(--accent);
+}
+
+/* Verified / never-seen / blocked stacked bar: colour + hatch pattern + text label. */
+.vbar {
+  display: grid;
+  gap: 4px;
+}
+.vbar__track {
+  display: flex;
+  height: 18px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1.5px solid var(--border);
+  background: var(--panel);
+}
+.vbar__seg {
+  display: block;
+  flex-basis: 0;
+  min-width: 0;
+}
+.vbar__seg--verified {
+  background: #1b7f3b;
+}
+.vbar__seg--unknown {
+  background: repeating-linear-gradient(135deg, #e0e0e0 0 5px, #6d6d6d 5px 9px);
+}
+.vbar__seg--blocked {
+  background: repeating-linear-gradient(0deg, #c62828 0 3px, #ffffff 3px 5px);
+}
+.vbar__label {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+:root[data-theme="high-contrast"] .vbar__seg--verified {
+  background: #ffffff;
+}
+:root[data-theme="high-contrast"] .vbar__seg--unknown {
+  background: repeating-linear-gradient(135deg, #000000 0 5px, #ffffff 5px 7px);
+}
+:root[data-theme="high-contrast"] .vbar__seg--blocked {
+  background: repeating-linear-gradient(0deg, #ff8080 0 3px, #000000 3px 5px);
+}
+
+/* Barriers inside a card */
+.rb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.rb {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.rb--impassable {
+  border-color: var(--error-fg);
+  border-width: 2px;
+}
+.rb__photo {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  flex: none;
+}
+.rb__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rb__name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rb__meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.rb__flag {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--error-fg);
+}
+
+/* Barrier popup photo thumbnails (only when the API sends photo_urls) */
+.popup__photos {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0;
+  flex-wrap: wrap;
+}
+.popup__thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #9a9a9a;
+}

@@ -64,6 +64,8 @@ export interface BarrierProps {
   confidence: number;
   edge_id: number;
   synthetic: boolean;
+  /** Optional; relative URLs (prefix with API_URL via `photoUrl`). Absent on older API builds. */
+  photo_urls?: string[];
 }
 
 export type CoverageSource = 'image' | 'seed' | 'wheel' | 'report';
@@ -215,6 +217,139 @@ export async function uploadImage(rec: CaptureUpload, signal?: AbortSignal): Pro
 export async function recomputeCoverage(signal?: AbortSignal): Promise<void> {
   const res = await fetch(`${API_URL}/coverage/recompute`, { method: 'POST', signal, headers: { Accept: 'application/json' } });
   if (!res.ok) throw new ApiError('/coverage/recompute', res.status);
+}
+
+// ---------- Route planner (GET /route, GET /search) ----------
+
+export type Profile = 'walker' | 'wheelchair_manual' | 'elderly_walking_aid' | 'pram';
+export const PROFILES: readonly Profile[] = ['walker', 'wheelchair_manual', 'elderly_walking_aid', 'pram'] as const;
+export type Risk = 'strict' | 'balanced' | 'relaxed';
+export const RISKS: readonly Risk[] = ['strict', 'balanced', 'relaxed'] as const;
+export type RouteMode = 'shortest' | 'naive_accessible' | 'samaan';
+export const ROUTE_MODES: readonly RouteMode[] = ['shortest', 'naive_accessible', 'samaan'] as const;
+
+export interface RouteBarrier {
+  id: number;
+  class: BarrierClassId | (string & {});
+  name_en: string;
+  name_hi: string;
+  severity: Severity;
+  permanent: boolean;
+  lat: number;
+  lon: number;
+  edge_id: number;
+  confidence: number;
+  tags: string[];
+  synthetic: boolean;
+  /** Probability the barrier is present at the departure hour (0-1). */
+  p_present: number;
+  impassable_for_profile: boolean;
+  /** Relative URLs; prefix with API_URL via `photoUrl`. */
+  photo_urls: string[];
+}
+
+export interface UnknownStretch {
+  start: [number, number];
+  end: [number, number];
+  length_m: number;
+  edge_ids: number[];
+}
+
+export interface RouteResult {
+  mode: RouteMode;
+  profile: Profile;
+  risk: Risk | null;
+  geometry: LineString;
+  length_m: number;
+  eta_s: number;
+  eta_min: number;
+  n_edges: number;
+  edge_ids: number[];
+  verified_pct: number;
+  unknown_pct: number;
+  blocked_pct: number;
+  barriers: RouteBarrier[];
+  n_barriers: number;
+  n_barriers_impassable: number;
+  unknown_stretches: UnknownStretch[];
+  n_unknown_stretches: number;
+  synthetic: boolean;
+}
+
+export interface RoutePoint {
+  lat: number;
+  lon: number;
+  snap_distance_m?: number;
+}
+
+export interface RouteResponse {
+  profile: Profile;
+  risk: Risk;
+  departure_hour: number;
+  origin_node: number;
+  destination_node: number;
+  synthetic_overlay: boolean;
+  origin: RoutePoint;
+  destination: RoutePoint;
+  demo?: 'riya';
+  label_en?: string;
+  label_hi?: string;
+  routes: Record<RouteMode, RouteResult | null>;
+}
+
+export interface RouteParams {
+  profile: Profile;
+  risk: Risk;
+  /** ISO datetime; only the hour matters to the API. */
+  depart: string;
+}
+
+export type SearchKind = 'anchor' | 'place' | 'street' | 'demo';
+
+export interface SearchResult {
+  id: number | string;
+  name_en: string;
+  name_hi: string;
+  kind: SearchKind | (string & {});
+  lat: number;
+  lon: number;
+  subtitle_en?: string;
+  subtitle_hi?: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+}
+
+function routeQuery(params: RouteParams): URLSearchParams {
+  return new URLSearchParams({ profile: params.profile, risk: params.risk, depart: params.depart });
+}
+
+export const routeApi = {
+  between: (from: { lat: number; lon: number }, to: { lat: number; lon: number }, params: RouteParams, signal?: AbortSignal) => {
+    const q = routeQuery(params);
+    q.set('from_lat', String(from.lat));
+    q.set('from_lon', String(from.lon));
+    q.set('to_lat', String(to.lat));
+    q.set('to_lon', String(to.lon));
+    return getJson<RouteResponse>(`/route?${q.toString()}`, signal);
+  },
+  demo: (name: 'riya', params: RouteParams, signal?: AbortSignal) => {
+    const q = routeQuery(params);
+    q.set('demo', name);
+    return getJson<RouteResponse>(`/route?${q.toString()}`, signal);
+  },
+  search: (query: string, limit = 8, signal?: AbortSignal) => {
+    const q = new URLSearchParams({ q: query, limit: String(limit) });
+    return getJson<SearchResponse>(`/search?${q.toString()}`, signal);
+  },
+};
+
+/** Absolute URL for a photo path returned by the API (already-absolute URLs pass through). */
+export function photoUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_URL}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
 /** Pick the name in the current language, falling back to English. */

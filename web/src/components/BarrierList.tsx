@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BarrierFeature } from '../api';
 import { localizedName } from '../api';
@@ -10,10 +10,11 @@ interface BarrierListProps {
   selectedId: number | null;
   onSelect: (feature: BarrierFeature) => void;
   onClose: () => void;
+  headingRef?: RefObject<HTMLHeadingElement>;
 }
 
 /** Screen-reader friendly alternative to the map: every barrier as a focusable button. */
-export default function BarrierList({ barriers, lang, selectedId, onSelect, onClose }: BarrierListProps) {
+export default function BarrierList({ barriers, lang, selectedId, onSelect, onClose, headingRef }: BarrierListProps) {
   const { t } = useTranslation();
 
   const sorted = useMemo(
@@ -24,7 +25,7 @@ export default function BarrierList({ barriers, lang, selectedId, onSelect, onCl
   return (
     <div className="panel__inner">
       <div className="panel__head">
-        <h2 id="list-title" className="panel__title">
+        <h2 id="list-title" className="panel__title" ref={headingRef} tabIndex={-1}>
           {t('list.title')} <span className="panel__count">({t('list.count', { count: sorted.length })})</span>
         </h2>
         <button type="button" className="btn btn--icon" onClick={onClose} aria-label={t('panels.close')}>

@@ -69,6 +69,20 @@ class RoadCentreline(SQLModel, table=True):
     has_sidewalks: bool = True  # False for road_shared
 
 
+class Place(SQLModel, table=True):
+    """Named OSM features in the zone for search (shops, schools, stations, parks, streets)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    osm_id: int | None = Field(default=None, index=True)
+    osm_type: str = "node"  # node | way
+    kind: str  # amenity/shop/… value or 'street'
+    name_en: str = Field(index=True)
+    name_hi: str | None = None
+    lat: float
+    lon: float
+    synthetic: bool = False
+
+
 class Coverage(SQLModel, table=True):
     """Observation summary per edge side (plan 6.2). Derived from images/rides; seeded in P0."""
 

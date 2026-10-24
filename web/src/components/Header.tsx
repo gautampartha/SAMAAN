@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Zone } from '../api';
 import { localized } from '../api';
@@ -15,6 +15,12 @@ interface HeaderProps {
   onToggleLegend: () => void;
   listOpen: boolean;
   onToggleList: () => void;
+  plannerOpen: boolean;
+  onTogglePlanner: () => void;
+  /** Opener refs so closing a panel can return focus to its toggle. */
+  plannerBtnRef: RefObject<HTMLButtonElement>;
+  legendBtnRef: RefObject<HTMLButtonElement>;
+  listBtnRef: RefObject<HTMLButtonElement>;
   synthetic: boolean;
   /** Live status line (aria-live region) rendered inside the header. */
   status: ReactNode;
@@ -74,6 +80,17 @@ export default function Header(props: HeaderProps) {
         {props.route === 'map' && (
           <>
             <button
+              ref={props.plannerBtnRef}
+              type="button"
+              className="btn"
+              aria-expanded={props.plannerOpen}
+              aria-controls="panel-route"
+              onClick={props.onTogglePlanner}
+            >
+              {t('route.open')}
+            </button>
+            <button
+              ref={props.legendBtnRef}
               type="button"
               className="btn"
               aria-expanded={props.legendOpen}
@@ -83,6 +100,7 @@ export default function Header(props: HeaderProps) {
               {t('panels.legend')}
             </button>
             <button
+              ref={props.listBtnRef}
               type="button"
               className="btn"
               aria-expanded={props.listOpen}

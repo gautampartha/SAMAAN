@@ -1,4 +1,4 @@
-# SAMAAN web (P0 scaffold + P2 capture)
+# SAMAAN web (P0 scaffold + P2 capture + P3 route planner)
 
 Vite + React 18 + TypeScript single-page PWA that renders the SAMAAN API's
 GeoJSON layers on a MapLibre GL JS map, in English and Hindi, with
@@ -24,7 +24,7 @@ empty map.
 
 | Variable       | Default                  | Purpose                                                        |
 | -------------- | ------------------------ | -------------------------------------------------------------- |
-| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`) and `POST /coverage/recompute` |
+| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route` and `GET /search` (barrier `photo_urls` are relative to it) |
 
 ## Pages
 
@@ -34,6 +34,86 @@ The app is a single page with a hash router (`src/router.ts`, no library):
 - `#/capture` - the photo-walk capture page.
 
 The header carries a Map / Capture navigation with `aria-current="page"`.
+
+## Route planner and three-route comparison (`#/`)
+
+The map page carries the route planner so the comparison works on a phone
+without leaving the map. **Plan route** in the toolbar opens it
+(`aria-expanded` / `aria-controls="panel-route"`); on phones it is a bottom
+sheet, on wider screens a left column with the comparison docked along the
+bottom of the map.
+
+**Planner** (`src/components/RoutePlanner.tsx`, state in `src/routePlanner.ts`):
+
+- Origin and destination fields. Each is a `role="combobox"` search input
+  (debounced 300 ms to `GET /search?q=&limit=8`, results in a `role="listbox"`
+  with Up/Down/Enter/Escape; selecting fills the field and drops the A/B pin),
+  a **Pick on map** toggle (`aria-pressed`; the next map click/tap sets the
+  point, the result is announced in a polite live region; on a phone the sheet
+  closes while picking and a banner with a Close button shows what a tap does)
+  and, for the origin, **Use my location** (`geolocation.getCurrentPosition`).
+- **Riya's trip (demo)** calls `GET /route?demo=riya` with the current
+  profile/risk/time and fills both fields from the response.
+- Profile (walker, manual wheelchair, elderly with walking aid, pram) and risk
+  tolerance (strict / balanced / relaxed, each with a one-line explanation) as
+  radio groups; departure time as `<input type="time">` defaulting to now and
+  sent as today's ISO datetime **with the local UTC offset** so the API sees
+  the local hour. Profile and risk persist in `localStorage`
+  (`samaan.route.profile`, `samaan.route.risk`).
+- **Compare routes** is disabled until both points are set. Loading is in a
+  `role="status"` line; errors in `role="alert"`: 404 -> "too far from any
+  known footpath" (or "demo not available" for the demo), 422 -> invalid
+  request, anything else -> generic. Buttons stay enabled while loading
+  (`aria-busy`) so keyboard focus is never dropped.
+
+**Comparison** (`src/components/RouteCompare.tsx`): one card per mode in the
+order shortest / naive accessible / SAMAAN. Desktop: three columns. Phone: a
+horizontally snap-scrolling strip with **1 Shortest / 2 Naive / 3 SAMAAN**
+buttons above it (`aria-current` follows the card in view; activating one
+scrolls the strip and focuses the card heading, so no horizontal gesture is
+needed). Each card shows the mode title and explanation, length (rounded
+metres), ETA (minutes), a stacked verified bar (`role="img"` with a full text
+alternative; green = checked, grey hatched = never seen, red striped =
+blocked, plus the visible "72% checked · 28% never seen" label), barrier count
+with the impassable count highlighted (warning glyph + text), the barrier list
+(class, severity, permanent/temporary, "likely present at this hour (p%)"
+when `p_present < 1`, first photo thumbnail when `photo_urls` is present), and
+unchecked-stretch count and total length. A `null` route shows "No route for
+this profile". `synthetic` routes carry the existing synthetic badge. The
+SAMAAN card has a thicker border **and** a "Recommended" badge. Each card has a
+screen-reader-only summary ("SAMAAN route: 821 metres, 19 minutes, 99 percent
+checked, 1 barrier") and a **Show on map** button (`aria-pressed`) that
+highlights the route, fits the map to it and dims the other two; the selection
+is announced in a live region.
+
+**Map** (`MapView.tsx`, styles in `src/components/routeStyles.tsx`): shortest =
+thin dashed blue, naive = medium dotted orange, SAMAAN = thick solid purple
+with a white casing (width and dash differ, not only colour); A/B pins; the
+selected route's barriers get a ring that pulses (static under
+`prefers-reduced-motion`; red ring = impassable for the profile, orange
+otherwise); its unknown stretches are drawn as a grey striped overlay along the
+footpath geometry matched by `edge_ids` (falls back to a straight
+`start`-`end` segment). Clicking a route line selects its card. The legend has
+a "Compared routes" section. When a comparison loads, the static **Demo route**
+layer is switched off (its dashed purple line would be confused with
+SAMAAN's); it can be re-enabled in the legend.
+
+**Barrier popups** show photo thumbnails when a `/layers/barriers` feature
+carries `photo_urls`; the property is optional and ignored when absent.
+
+### Keyboard-only flow
+
+1. Tab to **Plan route** in the toolbar, press Enter: focus moves to the
+   "Plan a route" heading.
+2. Tab to **Riya's trip (demo)**, press Enter: the comparison appears below
+   the form; the SAMAAN card is pre-selected and the map fits it.
+3. Tab into the comparison (phone: the three numbered tab buttons; Enter on
+   "3 SAMAAN" scrolls to that card and focuses its heading), then to **Show on
+   map** on any card and press Enter to highlight it.
+4. Escape anywhere in the planner closes it and returns focus to **Plan
+   route** (Escape in an open suggestion list closes the list first). The
+   legend and barrier list panels behave the same way (Escape closes, focus
+   returns to their toolbar button).
 
 ## Capture page (`#/capture`)
 
@@ -106,7 +186,15 @@ singleton, so switching back to the map does not stop uploads.
 - `src/components/BarrierList.tsx` - keyboard/screen-reader list of barriers.
 - `src/components/Legend.tsx` - layer toggles and pattern legend.
 - `src/components/Header.tsx` - app name, zone, Map/Capture navigation,
-  language/contrast/panel controls.
+  language/contrast/panel controls (Plan route / Layers & legend / Barrier list).
+- `src/components/RoutePlanner.tsx` - origin/destination search, pick-on-map,
+  geolocation, profile/risk/time, demo button, compare button.
+- `src/components/RouteCompare.tsx` - the three route cards, verified bar,
+  phone tab strip.
+- `src/components/routeStyles.tsx` - shared line styles/swatches for the three
+  routes, the unknown overlay and the barrier ring.
+- `src/routePlanner.ts` - `useRoutePlanner()` state hook, `departIso()`,
+  localStorage keys.
 - `src/components/CapturePage.tsx` - camera preview, sensors, settings, queue UI.
 - `src/sensors.ts` - `useSensors()` (GPS, compass heading, pitch), haversine.
 - `src/uploadQueue.ts` - persistent sequential upload queue with backoff.
@@ -161,6 +249,16 @@ the i18n files also carry the eight barrier class names for labels.
       `aria-pressed`, GPS quality shown as colour **and** a word, sensor
       summary in a polite live region throttled to one update per 2 s, errors
       use `role="alert"`, page navigation uses `aria-current="page"`.
+- [x] Panels (planner, legend, barrier list): opening moves focus to the
+      heading, closing returns it to the opener, Escape closes.
+- [x] Route planner: combobox/listbox search with `aria-activedescendant`,
+      pick-on-map announced via `aria-live`, radio groups with visible
+      labels and emoji glyphs hidden from AT, stacked bar as `role="img"`
+      with a text alternative, sr-only route summaries, `aria-pressed` on
+      card selection and tab strip `aria-current`, pulsing rings disabled
+      under `prefers-reduced-motion`, SAMAAN emphasis by border width plus a
+      text badge, route styles differ by width and dash, no horizontal page
+      scroll at 360-375 px (the card strip scrolls inside the sheet).
 
 Not yet done (later phases): service worker/offline, keyboard navigation of
-map features themselves (use the list), route planning UI.
+map features themselves (use the list).

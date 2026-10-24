@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, LAYER_KEYS, type BarrierFeature, type LayerData, type LayerKey, type Zone } from './api';
 import { toLang, type Lang } from './i18n';
@@ -7,7 +7,10 @@ import Legend from './components/Legend';
 import BarrierList from './components/BarrierList';
 import MapView, { type BarrierSelection } from './components/MapView';
 import CapturePage from './components/CapturePage';
+import RoutePlanner from './components/RoutePlanner';
+import RouteCompare from './components/RouteCompare';
 import { useHashRoute } from './router';
+import { formatCoords, useRoutePlanner, type PointRole } from './routePlanner';
 
 type Theme = 'auto' | 'normal' | 'high-contrast';
 const THEME_STORAGE_KEY = 'samaan.theme';
@@ -30,6 +33,26 @@ function systemPrefersHighContrast(): boolean {
 
 function isNarrow(): boolean {
   return window.matchMedia('(max-width: 767px)').matches;
+}
+
+/**
+ * Panel focus management: when a panel opens, focus moves to its heading; when the
+ * user closes it, focus returns to the button that opened it. The initial render is
+ * skipped so a panel that is open by default does not steal focus on load.
+ */
+function usePanelFocus(open: boolean, heading: RefObject<HTMLElement>, opener: RefObject<HTMLElement>): void {
+  const prev = useRef<boolean | null>(null);
+  useEffect(() => {
+    const was = prev.current;
+    prev.current = open;
+    if (was === null) return;
+    if (open && !was) {
+      const id = window.setTimeout(() => heading.current?.focus(), 0);
+      return () => window.clearTimeout(id);
+    }
+    if (!open && was) opener.current?.focus();
+    return undefined;
+  }, [open, heading, opener]);
 }
 
 const DEFAULT_VISIBLE: Record<LayerKey, boolean> = {
@@ -59,6 +82,22 @@ export default function App() {
   const [legendOpen, setLegendOpen] = useState(() => !isNarrow());
   const [listOpen, setListOpen] = useState(false);
   const [selection, setSelection] = useState<BarrierSelection | null>(null);
+
+  // ---- Route planner ----
+  const planner = useRoutePlanner();
+  const plannerOpen = planner.state.open;
+  const pickMode = planner.state.pickMode;
+  // Stable actions (useCallback / setState inside the hook) for dependency lists.
+  const { setOpen: setPlannerOpen, setPoint: setPlannerPoint, setPickMode, select: selectRoute } = planner;
+  const plannerBtnRef = useRef<HTMLButtonElement>(null);
+  const legendBtnRef = useRef<HTMLButtonElement>(null);
+  const listBtnRef = useRef<HTMLButtonElement>(null);
+  const plannerHeadingRef = useRef<HTMLHeadingElement>(null);
+  const legendHeadingRef = useRef<HTMLHeadingElement>(null);
+  const listHeadingRef = useRef<HTMLHeadingElement>(null);
+  usePanelFocus(plannerOpen, plannerHeadingRef, plannerBtnRef);
+  usePanelFocus(legendOpen, legendHeadingRef, legendBtnRef);
+  usePanelFocus(listOpen, listHeadingRef, listBtnRef);
 
   // ---- Data loading: everything in parallel; partial failures keep the rest. ----
   useEffect(() => {
@@ -131,19 +170,64 @@ export default function App() {
     [i18n],
   );
 
-  // On phones the two panels are bottom sheets, so only one is open at a time.
+  // On phones the panels are bottom sheets, so only one is open at a time. The
+  // planner and the barrier list share the left column on desktop, so they are
+  // exclusive there too.
   const toggleLegend = useCallback(() => {
     setLegendOpen((open) => {
-      if (!open && isNarrow()) setListOpen(false);
+      if (!open && isNarrow()) {
+        setListOpen(false);
+        setPlannerOpen(false);
+      }
       return !open;
     });
-  }, []);
+  }, [setPlannerOpen]);
   const toggleList = useCallback(() => {
     setListOpen((open) => {
-      if (!open && isNarrow()) setLegendOpen(false);
+      if (!open) {
+        setPlannerOpen(false);
+        if (isNarrow()) setLegendOpen(false);
+      }
       return !open;
     });
-  }, []);
+  }, [setPlannerOpen]);
+  const togglePlanner = useCallback(() => {
+    const next = !plannerOpen;
+    setPlannerOpen(next);
+    if (next) {
+      setListOpen(false);
+      if (isNarrow()) setLegendOpen(false);
+    } else {
+      setPickMode(null);
+    }
+  }, [plannerOpen, setPlannerOpen, setPickMode]);
+
+  // A map pick sets the planner point and ends pick mode.
+  const onPick = useCallback(
+    (role: PointRole, lat: number, lon: number) => {
+      setPlannerPoint(role, { lat, lon, label: formatCoords(lat, lon) });
+      // On a phone the sheet hides the map while picking; bring it back once the point is set.
+      if (isNarrow()) setPlannerOpen(true);
+    },
+    [setPlannerPoint, setPlannerOpen],
+  );
+  // While picking on a phone, close the sheet so the map is tappable.
+  useEffect(() => {
+    if (pickMode && isNarrow()) setPlannerOpen(false);
+  }, [pickMode, setPlannerOpen]);
+
+  // When a comparison arrives, hide the static demo layer (its dashed purple line would be confused with SAMAAN's).
+  const result = planner.state.result;
+  useEffect(() => {
+    if (result) setVisible((v) => (v.demo ? { ...v, demo: false } : v));
+  }, [result]);
+
+  const onPanelKeyDown = (close: () => void) => (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
+  };
 
   const toggleLayer = useCallback((key: LayerKey) => {
     setVisible((v) => ({ ...v, [key]: !v[key] }));
@@ -189,6 +273,11 @@ export default function App() {
         onToggleLegend={toggleLegend}
         listOpen={listOpen}
         onToggleList={toggleList}
+        plannerOpen={plannerOpen}
+        onTogglePlanner={togglePlanner}
+        plannerBtnRef={plannerBtnRef}
+        legendBtnRef={legendBtnRef}
+        listBtnRef={listBtnRef}
         synthetic={synthetic}
         status={route === 'map' ? statusNode : null}
         route={route}
@@ -199,7 +288,7 @@ export default function App() {
           <CapturePage />
         </main>
       ) : (
-        <main id="main" className="main" tabIndex={-1}>
+        <main id="main" className={`main${plannerOpen ? ' main--planner' : ''}`} tabIndex={-1}>
           <MapView
             zone={zone}
             zoneSettled={zoneSettled}
@@ -208,7 +297,23 @@ export default function App() {
             lang={lang}
             selection={selection}
             onBasemapError={() => setBasemapError(true)}
+            routes={result}
+            selectedRoute={planner.state.selected}
+            onSelectRoute={selectRoute}
+            origin={planner.state.origin}
+            destination={planner.state.destination}
+            pickMode={pickMode}
+            onPick={onPick}
           />
+
+          {pickMode && !plannerOpen && (
+            <div className="banner banner--pick" role="status" aria-live="polite">
+              {t('route.pickHint', { field: t(`route.${pickMode}`).toLocaleLowerCase() })}
+              <button type="button" className="btn" onClick={() => setPickMode(null)}>
+                {t('panels.close')}
+              </button>
+            </div>
+          )}
 
           {status === 'error' && (
             <div className="banner banner--error" role="alert">
@@ -216,20 +321,39 @@ export default function App() {
             </div>
           )}
 
+          {plannerOpen && (
+            <div className="route-dock" onKeyDown={onPanelKeyDown(togglePlanner)}>
+              <aside id="panel-route" className="panel panel--route" aria-labelledby="route-title">
+                <RoutePlanner planner={planner} lang={lang} onClose={togglePlanner} headingRef={plannerHeadingRef} />
+              </aside>
+              {result && (
+                <aside className="panel panel--compare" aria-labelledby="compare-title">
+                  <RouteCompare result={result} selected={planner.state.selected} lang={lang} onSelect={selectRoute} />
+                </aside>
+              )}
+            </div>
+          )}
+
           {legendOpen && (
-            <aside id="panel-legend" className="panel panel--legend" aria-labelledby="legend-title">
-              <Legend visible={visible} onToggle={toggleLayer} onClose={toggleLegend} />
+            <aside
+              id="panel-legend"
+              className="panel panel--legend"
+              aria-labelledby="legend-title"
+              onKeyDown={onPanelKeyDown(toggleLegend)}
+            >
+              <Legend visible={visible} onToggle={toggleLayer} onClose={toggleLegend} headingRef={legendHeadingRef} />
             </aside>
           )}
 
           {listOpen && (
-            <aside id="panel-list" className="panel panel--list" aria-labelledby="list-title">
+            <aside id="panel-list" className="panel panel--list" aria-labelledby="list-title" onKeyDown={onPanelKeyDown(toggleList)}>
               <BarrierList
                 barriers={barriers}
                 lang={lang}
                 selectedId={selection?.feature.properties.id ?? null}
                 onSelect={selectBarrier}
                 onClose={toggleList}
+                headingRef={listHeadingRef}
               />
             </aside>
           )}
