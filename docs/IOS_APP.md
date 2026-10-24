@@ -11,6 +11,18 @@ the Xcode project in `web/ios/`.
 - `web/capacitor.config.ts`, `web/ios/App/App/Info.plist` (camera, microphone, speech, location,
   motion, local-network usage strings; HTTP allowed for the LAN API during the hackathon).
 
+## Signing (set once, 2026-10-25)
+The project is signed with **Partha Gautam (Personal Team)**, team id `6K4J7A3A97`, bundle id
+`ai.samaan.app`, automatic signing. The Apple ID must be signed in under Xcode → Settings →
+Accounts on the building Mac. From the command line:
+```bash
+cd web/ios/App && xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+  -destination 'id=<iphone udid>' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+xcrun devicectl device install app --device <iphone udid> <path to App.app>
+xcrun devicectl device process launch --device <iphone udid> ai.samaan.app
+```
+(`xcrun devicectl list devices` prints the udid.) A personal team's profile lasts 7 days.
+
 ## Install on the phone (5 minutes)
 1. Start the API so the phone can reach it over Wi-Fi (same network as the laptop):
    ```bash
