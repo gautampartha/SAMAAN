@@ -6,6 +6,8 @@ import Header from './components/Header';
 import Legend from './components/Legend';
 import BarrierList from './components/BarrierList';
 import MapView, { type BarrierSelection } from './components/MapView';
+import CapturePage from './components/CapturePage';
+import { useHashRoute } from './router';
 
 type Theme = 'auto' | 'normal' | 'high-contrast';
 const THEME_STORAGE_KEY = 'samaan.theme';
@@ -36,11 +38,13 @@ const DEFAULT_VISIBLE: Record<LayerKey, boolean> = {
   coverage: false,
   anchors: true,
   demo: true,
+  images: false,
 };
 
 export default function App() {
   const { t, i18n } = useTranslation();
   const lang: Lang = toLang(i18n.language);
+  const route = useHashRoute();
 
   const [zone, setZone] = useState<Zone | null>(null);
   const [zoneSettled, setZoneSettled] = useState(false);
@@ -61,7 +65,7 @@ export default function App() {
     const ac = new AbortController();
     const s = ac.signal;
     (async () => {
-      const [h, z, fp, ba, cov, an, de] = await Promise.allSettled([
+      const [h, z, fp, ba, cov, an, de, im] = await Promise.allSettled([
         api.health(s),
         api.zone(s),
         api.footpaths(s),
@@ -69,6 +73,7 @@ export default function App() {
         api.coverage(s),
         api.anchors(s),
         api.demo(s),
+        api.images(s),
       ]);
       if (s.aborted) return;
 
@@ -87,6 +92,7 @@ export default function App() {
       pick('coverage', cov);
       pick('anchors', an);
       pick('demo', de);
+      pick('images', im);
 
       setData(next);
       setFailed(failedKeys);
@@ -184,44 +190,51 @@ export default function App() {
         listOpen={listOpen}
         onToggleList={toggleList}
         synthetic={synthetic}
-        status={statusNode}
+        status={route === 'map' ? statusNode : null}
+        route={route}
       />
 
-      <main id="main" className="main" tabIndex={-1}>
-        <MapView
-          zone={zone}
-          zoneSettled={zoneSettled}
-          data={data}
-          visible={visible}
-          lang={lang}
-          selection={selection}
-          onBasemapError={() => setBasemapError(true)}
-        />
+      {route === 'capture' ? (
+        <main id="main" className="main main--page" tabIndex={-1}>
+          <CapturePage />
+        </main>
+      ) : (
+        <main id="main" className="main" tabIndex={-1}>
+          <MapView
+            zone={zone}
+            zoneSettled={zoneSettled}
+            data={data}
+            visible={visible}
+            lang={lang}
+            selection={selection}
+            onBasemapError={() => setBasemapError(true)}
+          />
 
-        {status === 'error' && (
-          <div className="banner banner--error" role="alert">
-            {t('load.error')}
-          </div>
-        )}
+          {status === 'error' && (
+            <div className="banner banner--error" role="alert">
+              {t('load.error')}
+            </div>
+          )}
 
-        {legendOpen && (
-          <aside id="panel-legend" className="panel panel--legend" aria-labelledby="legend-title">
-            <Legend visible={visible} onToggle={toggleLayer} onClose={toggleLegend} />
-          </aside>
-        )}
+          {legendOpen && (
+            <aside id="panel-legend" className="panel panel--legend" aria-labelledby="legend-title">
+              <Legend visible={visible} onToggle={toggleLayer} onClose={toggleLegend} />
+            </aside>
+          )}
 
-        {listOpen && (
-          <aside id="panel-list" className="panel panel--list" aria-labelledby="list-title">
-            <BarrierList
-              barriers={barriers}
-              lang={lang}
-              selectedId={selection?.feature.properties.id ?? null}
-              onSelect={selectBarrier}
-              onClose={toggleList}
-            />
-          </aside>
-        )}
-      </main>
+          {listOpen && (
+            <aside id="panel-list" className="panel panel--list" aria-labelledby="list-title">
+              <BarrierList
+                barriers={barriers}
+                lang={lang}
+                selectedId={selection?.feature.properties.id ?? null}
+                onSelect={selectBarrier}
+                onClose={toggleList}
+              />
+            </aside>
+          )}
+        </main>
+      )}
     </div>
   );
 }

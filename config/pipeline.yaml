@@ -5,6 +5,17 @@ coverage:
   view_range_m: 20           # view cone range
   default_hfov_deg: 65
   camera_height_m: 1.3       # handheld default (6.4 ground-plane model)
+  max_gps_accuracy_m: 25     # images with worse GPS accuracy do not count for coverage
+  spherical_hfov_deg: 360    # 360 cameras see everything within view_range_m
+
+mapillary:                   # plan 6.2; token from env MAPILLARY_TOKEN (human task)
+  api_url: "https://graph.mapillary.com/images"
+  fields: [id, computed_geometry, geometry, computed_compass_angle, compass_angle, captured_at,
+           camera_parameters, camera_type, thumb_2048_url, sequence, creator, is_pano, width, height]
+  page_limit: 500
+  licence: "CC BY-SA 4.0"
+  attribution_template: "Mapillary image {id} by {creator}, {licence} (https://www.mapillary.com/app/?pKey={id})"
+  thumb_dir: "data/raw/mapillary"
 
 geolocation:
   distance_min_m: 1.0

@@ -97,6 +97,13 @@ class Image(SQLModel, table=True):
     path: str | None = None
     gps_accuracy_m: float | None = None
     attribution: str | None = None  # licence string, required for Mapillary
+    sequence_id: str | None = None  # Mapillary sequence
+    camera_type: str | None = None  # perspective | fisheye | spherical
+    creator: str | None = None
+    session_id: str | None = Field(default=None, index=True)  # own capture walk id
+    note: str | None = None
+    heading_source: str | None = None  # mapillary_computed | mapillary_compass | ios | absolute | relative | none
+    url: str | None = None  # remote thumbnail url (expires for Mapillary)
     synthetic: bool = False
 
 

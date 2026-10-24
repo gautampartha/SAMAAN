@@ -212,5 +212,102 @@ Riya's trip now runs 800 m over 39 footpath edges (sidewalks + crossings).
 
 ---
 
-## Phase P2 — Ingest & capture
+## Phase P2 — Ingest & capture (2026-10-24) — done
+
+### Plan
+Images with heading in, coverage out (plan 6.2): a Mapillary API v4 downloader (token from the
+environment, attribution stored per image, optional thumbnail download), a `POST /images`
+upload endpoint for our own photos (multipart, GPS + heading + pitch + HFOV + session), the
+`#/capture` PWA page (camera preview, GPS watch, compass via DeviceOrientation incl. iOS
+permission, auto-capture every N metres, IndexedDB upload queue), view-cone coverage
+computation (camera within 15 m of the edge and heading ± HFOV/2 cone of 20 m intersecting it,
+K = 2 images), a state recompute step that prefers real coverage over seeded coverage, an
+images layer, and tests on toy edges/images. Decisions taken alone are recorded below.
+
+### What was built
+- `pipeline/ingest/mapillary.py` (`make ingest-mapillary`, needs `MAPILLARY_TOKEN`): Graph API
+  v4 bbox query with paging, fields per plan 6.2 plus `camera_type`, `is_pano`, `sequence`,
+  `creator`, `width`, `height`; computed geometry/heading preferred over raw; HFOV from
+  `camera_parameters` focal (360° for panoramas); attribution string per image
+  ("Mapillary image … by …, CC BY-SA 4.0 (link)"); dedupe on source id; `--download` stores
+  2048 px thumbnails under `data/raw/mapillary/` (URLs expire). The HTTP layer is injectable, so
+  the parser and paging are unit-tested from a recorded-style fixture without a token.
+- `POST /images` (multipart): photo + lat/lon/accuracy/heading/pitch/HFOV/captured_at/session/
+  note/size. Validates type (JPEG/PNG/WebP magic bytes), size (15 MB), ranges; stores the file
+  under `data/raw/own/<session>/<id>.jpg` and a non-synthetic `image` row; then recomputes
+  coverage + states in a background task and reloads the in-memory graph. `GET /images/{id}`,
+  `GET /images/{id}/photo`, `GET /layers/images` (points with heading, source, attribution,
+  session, has_photo), `POST /coverage/recompute`.
+- `pipeline/coverage/compute.py` (`make coverage`): view-cone sector polygon (heading ± HFOV/2,
+  20 m; full disc for 360° cameras), camera within 15 m of the edge, GPS accuracy ≤ 25 m, K = 2;
+  images with no heading are skipped unless spherical; coverage rows per edge inherit the edge
+  side; synthetic images are ignored. STRtree keeps it fast (thousands of images, 2.5 k edges).
+- `pipeline/state/recompute.py`: single state rule for seed, coverage, reports and rides: real
+  coverage (image/wheel/report) beats seeded coverage per edge; `state_synthetic` records which
+  decided. `make seed` now uses it too.
+- `api/db.py`: `add_missing_columns` adds new model columns to an existing SQLite file at
+  startup (create_all never alters), so schema additions no longer require a rebuild.
+- Web: hash router (`#/`, `#/capture`) with Map / Capture navigation; **capture page** with
+  camera preview (environment camera, canvas → JPEG 0.85) and a file-picker fallback plus an
+  HTTPS hint when the camera is unavailable; GPS watch with accuracy quality label
+  (good ≤ 8 m, ok ≤ 20 m, poor), compass heading from `deviceorientationabsolute` /
+  `deviceorientation` (`webkitCompassHeading` on iOS, iOS permission on the "Enable sensors"
+  tap), pitch, live readouts plus a throttled screen-reader summary; settings persisted (HFOV
+  30–120, auto-capture interval in metres, session id, note); auto capture when moved ≥ interval
+  and accuracy ≤ 25 m; **IndexedDB upload queue** (sequential, backoff 2→30 s, pauses offline,
+  survives reload, counters, "Retry now", translated errors) that posts to `POST /images` and
+  debounces `POST /coverage/recompute`. Map: **images layer** (off by default; colour per source
+  plus a ring for own photos, heading arrows, popup with time/heading/HFOV/session/attribution/
+  photo), coverage popup (observed, image count, real vs seeded, side). Verified in the browser
+  on a scratch DB copy: two uploaded test photos aimed at one sidewalk made it "observed by
+  image" (K = 2) and the markers appeared with arrows; the live camera path cannot run in the
+  desktop pane and is a human check. Test uploads were deleted afterwards; the real DB has no
+  images.
+- Tests (67+): view-cone geometry, image→edge rules (angle, distance, no heading, spherical, GPS
+  accuracy, grazing), coverage counts/threshold/idempotence, real-over-seed state precedence,
+  stale coverage → unknown, Mapillary paging/parsing/attribution/dedupe, upload validation and
+  file round trip, images layer, recompute endpoint, DB migration.
+
+### Zone results
+`make coverage` on the real DB: 0 images yet (no token, no walks), so all 2475 edges keep their
+seeded state. That is expected: real coverage arrives with the human tasks below.
+
+### Decisions taken alone
+- Coverage is per edge (the P1 graph already splits sides); `Coverage.side` mirrors the edge.
+- Images with poor GPS (> 25 m) or no heading do not count toward coverage; they are kept for
+  later detection work. Threshold lives in `config/pipeline.yaml`.
+- Mapillary thumbnails are downloaded only with `--download`/`DOWNLOAD=1` (URLs expire) and are
+  gitignored; the attribution string is stored on every row regardless.
+- The capture page uses a hash router (`#/capture`) instead of adding react-router.
+- Upload recompute runs in the background on every photo; `POST /coverage/recompute` exists for
+  the capture page's debounced refresh.
+
+### Open issues
+- Coverage ignores occlusion and image quality (a blurred or night photo still counts).
+- The heading on phones held flat or indoors is noisy; `heading_source=relative` images are
+  accepted as-is. Consider a quality flag in P4 when geolocating detections.
+- Camera and compass APIs need HTTPS on phones; the dev server is HTTP (see web/README.md).
+
+### Human tasks (P2)
+7. **Mapillary token** (5 min): create a free developer app at mapillary.com/dashboard/developers,
+   copy the client token, then run
+   `MAPILLARY_TOKEN='MLY|...' make ingest-mapillary DOWNLOAD=1` and `make coverage`.
+   Report the printed counts in this file (they are facts, not synthetic).
+8. **Photo walks** (2–4 h, two people): serve the app over HTTPS on the phone (see
+   web/README.md), open `#/capture`, tap "Enable sensors", set the session id to
+   `<street>-<side>` (e.g. `bhartendu-marg-L`), auto-capture every 8 m, and walk **both sides of
+   every street** in the zone bbox holding the phone upright, camera facing along the footpath.
+   Check the GPS quality label stays "good/ok"; stop and wait under open sky if it goes "poor".
+   Afterwards `make coverage`, then confirm on the map that walked sidewalks turned clear.
+9. **Review new Hindi strings** (10 min) in `web/src/i18n/hi.json`: the agent flagged
+   "दिशा (हेडिंग)", "झुकाव (पिच)", "व्हील सर्वेक्षण" (wheel-sensor coverage), "सीड किया गया डेमो
+   डेटा", "सापेक्ष (बिना कैलिब्रेशन) दिशा", "निरपेक्ष कम्पास", colour words "टील", "मैजेंटा",
+   nav "फ़ोटो कैप्चर", "सत्र आईडी".
+10. **Check heading on your phones** (10 min): on the capture page, point the phone north; the
+   heading readout should be near 0°. If it is off by ~90° or mirrored, note the phone model here
+   so the heading conversion can be fixed before the walks.
+
+---
+
+## Phase P3 — Detector
 _Not started. Waiting for "go"._

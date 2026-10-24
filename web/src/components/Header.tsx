@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { Zone } from '../api';
 import { localized } from '../api';
 import { LANGS, type Lang } from '../i18n';
+import { hrefFor, ROUTES, type Route } from '../router';
 
 interface HeaderProps {
   zone: Zone | null;
@@ -17,6 +18,7 @@ interface HeaderProps {
   synthetic: boolean;
   /** Live status line (aria-live region) rendered inside the header. */
   status: ReactNode;
+  route: Route;
 }
 
 export default function Header(props: HeaderProps) {
@@ -37,6 +39,13 @@ export default function Header(props: HeaderProps) {
           </p>
           {props.status}
         </div>
+        <nav className="nav" aria-label={t('nav.label')}>
+          {ROUTES.map((r) => (
+            <a key={r} className="nav__link" href={hrefFor(r)} aria-current={props.route === r ? 'page' : undefined}>
+              {t(`nav.${r}`)}
+            </a>
+          ))}
+        </nav>
       </header>
 
       <nav className="toolbar" aria-label={t('app.name')}>
@@ -62,24 +71,28 @@ export default function Header(props: HeaderProps) {
         >
           {t('theme.highContrast')}
         </button>
-        <button
-          type="button"
-          className="btn"
-          aria-expanded={props.legendOpen}
-          aria-controls="panel-legend"
-          onClick={props.onToggleLegend}
-        >
-          {t('panels.legend')}
-        </button>
-        <button
-          type="button"
-          className="btn"
-          aria-expanded={props.listOpen}
-          aria-controls="panel-list"
-          onClick={props.onToggleList}
-        >
-          {t('panels.barriers')}
-        </button>
+        {props.route === 'map' && (
+          <>
+            <button
+              type="button"
+              className="btn"
+              aria-expanded={props.legendOpen}
+              aria-controls="panel-legend"
+              onClick={props.onToggleLegend}
+            >
+              {t('panels.legend')}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              aria-expanded={props.listOpen}
+              aria-controls="panel-list"
+              onClick={props.onToggleList}
+            >
+              {t('panels.barriers')}
+            </button>
+          </>
+        )}
       </nav>
     </>
   );

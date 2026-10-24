@@ -12,12 +12,15 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import type { FeatureCollection, Point } from 'geojson';
 import {
+  imagePhotoUrl,
   localizedName,
   LAYER_KEYS,
   type AnchorProps,
   type BarrierFeature,
   type BarrierProps,
+  type CoverageProps,
   type DemoProps,
+  type ImageProps,
   type LayerData,
   type LayerKey,
   type Zone,
@@ -55,7 +58,39 @@ const LAYER_IDS: Record<LayerKey, string[]> = {
   demo: ['demo-path-casing', 'demo-path', 'demo-endpoints', 'demo-endpoints-label'],
   anchors: ['anchors', 'anchors-label'],
   barriers: ['barriers', 'barriers-label'],
+  images: ['images', 'images-heading'],
 };
+
+/** Point layers that open popups; a coverage click is ignored when one of these is hit too. */
+const POINT_CLICK_LAYERS = ['barriers', 'anchors', 'demo-endpoints', 'images'];
+
+// Image colours per source (also named in words in the legend).
+export const IMAGE_COLOURS = { mapillary: '#00838f', own: '#ad1457', report: '#5d4037', other: '#616161' } as const;
+const ARROW_IMAGE = 'samaan-heading-arrow';
+
+/** Up-pointing triangle, drawn on a canvas so no external asset or data URL is needed. */
+function headingArrowImage(): ImageData | null {
+  const size = 24;
+  const canvas = document.createElement('canvas');
+  canvas.width = size * 2;
+  canvas.height = size * 2;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.scale(2, 2);
+  ctx.beginPath();
+  ctx.moveTo(size / 2, 1);
+  ctx.lineTo(size - 4, size - 3);
+  ctx.lineTo(size / 2, size - 7);
+  ctx.lineTo(4, size - 3);
+  ctx.closePath();
+  ctx.fillStyle = '#111111';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.fill();
+  return ctx.getImageData(0, 0, size * 2, size * 2);
+}
 
 function nameProp(lang: Lang): 'name_hi' | 'name_en' {
   return lang === 'hi' ? 'name_hi' : 'name_en';
@@ -189,6 +224,52 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     });
   }
 
+  // --- Images: small circle coloured by source; arrow rotated by compass heading ---
+  add({
+    id: 'images',
+    type: 'circle',
+    source: 'images',
+    paint: {
+      'circle-radius': ['match', ['get', 'source'], 'own', 6, 5],
+      'circle-color': [
+        'match',
+        ['get', 'source'],
+        'mapillary',
+        IMAGE_COLOURS.mapillary,
+        'own',
+        IMAGE_COLOURS.own,
+        'report',
+        IMAGE_COLOURS.report,
+        IMAGE_COLOURS.other,
+      ],
+      // Own photos get a dark ring, others a white one, so source is not colour-only.
+      'circle-stroke-color': ['match', ['get', 'source'], 'own', '#111111', '#ffffff'],
+      'circle-stroke-width': ['match', ['get', 'source'], 'own', 2, 1.5],
+    },
+  });
+  if (!map.hasImage(ARROW_IMAGE)) {
+    const img = headingArrowImage();
+    if (img) map.addImage(ARROW_IMAGE, img, { pixelRatio: 2 });
+  }
+  if (map.hasImage(ARROW_IMAGE)) {
+    add({
+      id: 'images-heading',
+      type: 'symbol',
+      source: 'images',
+      filter: ['==', ['typeof', ['get', 'heading_deg']], 'number'],
+      layout: {
+        'icon-image': ARROW_IMAGE,
+        'icon-size': 0.6,
+        'icon-rotate': ['get', 'heading_deg'],
+        'icon-rotation-alignment': 'map',
+        // Offset is applied in the rotated frame: the arrow sits just ahead of the circle.
+        'icon-offset': [0, -16],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+    });
+  }
+
   // --- Demo endpoints on top ---
   add({
     id: 'demo-endpoints',
@@ -293,6 +374,72 @@ function demoPopupContent(p: DemoProps, lang: Lang, t: TFunction): HTMLElement {
   return root;
 }
 
+function formatTime(iso: string | null, lang: Lang): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return iso;
+  return new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ms));
+}
+
+/** Rendered-feature properties lose `null` (they arrive as missing); normalise the optional ones. */
+function normaliseImage(raw: Record<string, unknown>): ImageProps {
+  const p = { ...raw } as unknown as ImageProps;
+  p.heading_deg = typeof raw.heading_deg === 'number' ? raw.heading_deg : null;
+  p.captured_at = typeof raw.captured_at === 'string' ? raw.captured_at : null;
+  p.attribution = typeof raw.attribution === 'string' && raw.attribution.length > 0 ? raw.attribution : null;
+  p.session_id = typeof raw.session_id === 'string' && raw.session_id.length > 0 ? raw.session_id : null;
+  p.has_photo = raw.has_photo === true || raw.has_photo === 'true';
+  p.synthetic = raw.synthetic === true || raw.synthetic === 'true';
+  return p;
+}
+
+function imagePopupContent(p: ImageProps, lang: Lang, t: TFunction): HTMLElement {
+  const root = el('div', 'popup');
+  root.lang = lang;
+  root.appendChild(el('h3', 'popup__title', t(`images.source.${p.source}`, { defaultValue: String(p.source) })));
+  const dl = el('dl', 'popup__list');
+  const time = formatTime(p.captured_at, lang);
+  row(dl, t('images.time'), time ?? t('images.unknown'));
+  row(dl, t('images.heading'), p.heading_deg === null ? t('images.unknown') : `${Math.round(p.heading_deg)}°`);
+  if (typeof p.hfov_deg === 'number') row(dl, t('images.hfov'), `${Math.round(p.hfov_deg)}°`);
+  if (p.session_id) row(dl, t('images.session'), p.session_id);
+  root.appendChild(dl);
+  // Attribution must always be visible for Mapillary imagery.
+  const attribution = p.attribution ?? (p.source === 'mapillary' ? t('images.mapillaryAttribution') : null);
+  if (attribution) root.appendChild(el('p', 'popup__attribution', attribution));
+  if (p.has_photo) {
+    const img = document.createElement('img');
+    img.className = 'popup__photo';
+    img.src = imagePhotoUrl(p.id);
+    img.alt = t('images.photoAlt');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    root.appendChild(img);
+  } else {
+    root.appendChild(el('p', 'popup__note', t('images.noPhoto')));
+  }
+  if (p.synthetic) root.appendChild(el('span', 'badge badge--synthetic', t('badge.synthetic')));
+  return root;
+}
+
+function coveragePopupContent(p: CoverageProps, lang: Lang, t: TFunction): HTMLElement {
+  const root = el('div', 'popup');
+  root.lang = lang;
+  const observed = p.observed === true || (p.observed as unknown) === 'true';
+  root.appendChild(el('h3', 'popup__title', t('layers.coverage')));
+  const dl = el('dl', 'popup__list');
+  row(dl, t('popup.status'), observed ? t('coverage.observed') : t('coverage.unobserved'));
+  const n = typeof p.n_images === 'number' ? p.n_images : Number(p.n_images) || 0;
+  row(dl, t('coverage.nImages'), String(n));
+  if (p.source) row(dl, t('coverage.sourceLabel'), t(`coverage.source.${p.source}`, { defaultValue: String(p.source) }));
+  if (p.side) row(dl, t('coverage.sideLabel'), t(`coverage.side.${p.side}`, { defaultValue: String(p.side) }));
+  const last = formatTime(typeof p.last_observed_at === 'string' ? p.last_observed_at : null, lang);
+  if (last) row(dl, t('coverage.lastObserved'), last);
+  root.appendChild(dl);
+  if (p.source === 'seed') root.appendChild(el('span', 'badge badge--synthetic', t('coverage.seeded')));
+  return root;
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
@@ -374,7 +521,7 @@ export default function MapView({ zone, zoneSettled, data, visible, lang, select
       const pointer = (on: boolean) => () => {
         map.getCanvas().style.cursor = on ? 'pointer' : '';
       };
-      for (const id of ['barriers', 'anchors', 'demo-endpoints']) {
+      for (const id of POINT_CLICK_LAYERS) {
         map.on('mouseenter', id, pointer(true));
         map.on('mouseleave', id, pointer(false));
       }
@@ -405,6 +552,25 @@ export default function MapView({ zone, zoneSettled, data, visible, lang, select
         if (!f) return;
         openPopup(map, [e.lngLat.lng, e.lngLat.lat], demoPopupContent(f.properties as unknown as DemoProps, langRef.current, tRef.current));
       });
+      map.on('click', 'images', (e) => {
+        const f = first(e);
+        if (!f) return;
+        openPopup(map, coords(f), imagePopupContent(normaliseImage(f.properties), langRef.current, tRef.current));
+      });
+      const onCoverageClick = (e: MapLayerMouseEvent) => {
+        const f = first(e);
+        if (!f) return;
+        // Points sit above the coverage bands; let their own handlers win.
+        const pointLayers = POINT_CLICK_LAYERS.filter((id) => map.getLayer(id));
+        if (map.queryRenderedFeatures(e.point, { layers: pointLayers }).length > 0) return;
+        openPopup(
+          map,
+          [e.lngLat.lng, e.lngLat.lat],
+          coveragePopupContent(f.properties as unknown as CoverageProps, langRef.current, tRef.current),
+        );
+      };
+      map.on('click', 'coverage-observed', onCoverageClick);
+      map.on('click', 'coverage-unobserved', onCoverageClick);
 
       setReady(true);
     });

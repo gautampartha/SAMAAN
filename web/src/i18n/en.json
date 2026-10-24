@@ -11,7 +11,8 @@
     "barriers": "Barriers",
     "coverage": "Image coverage",
     "anchors": "Landmarks",
-    "demo": "Demo route"
+    "demo": "Demo route",
+    "images": "Images"
   },
   "state": { "clear": "Clear", "blocked": "Blocked", "unknown": "Unknown" },
   "legend": {
@@ -25,7 +26,13 @@
     "demoOrigin": "Origin (A)",
     "demoDestination": "Destination (B)",
     "coverageObserved": "Observed footpath (blue band)",
-    "coverageUnobserved": "Not yet observed (faint grey band)"
+    "coverageUnobserved": "Not yet observed (faint grey band)",
+    "coverageDetail": "Tap a band to see how many images cover it and whether the coverage comes from real images or seeded demo data",
+    "imageOwn": "Own photo: magenta circle with a dark ring",
+    "imageMapillary": "Mapillary image: teal circle with a white ring",
+    "imageReport": "Report photo: brown circle with a white ring",
+    "imageArrowTitle": "Camera direction",
+    "imageArrow": "A black arrow beside the circle points where the camera faced; no arrow means the heading is unknown"
   },
   "severity": { "label": "Severity", "1": "Very low", "2": "Low", "3": "Medium", "4": "High", "5": "Very high" },
   "barrierClass": {
@@ -69,6 +76,90 @@
     "partial": "Some layers could not be loaded: {{layers}}.",
     "error": "Could not reach the SAMAAN API. Showing an empty map.",
     "basemap": "The basemap could not be loaded."
+  },
+  "nav": { "label": "Pages", "map": "Map", "capture": "Capture" },
+  "images": {
+    "source": { "mapillary": "Mapillary image", "own": "Own photo", "report": "Report photo" },
+    "time": "Taken",
+    "heading": "Heading",
+    "hfov": "Field of view",
+    "session": "Session",
+    "photoAlt": "Street photo taken at this position",
+    "noPhoto": "No photo is stored for this image.",
+    "unknown": "Unknown",
+    "mapillaryAttribution": "Imagery © Mapillary contributors, CC BY-SA 4.0"
+  },
+  "coverage": {
+    "observed": "Observed",
+    "unobserved": "Not yet observed",
+    "nImages": "Images",
+    "sourceLabel": "Coverage from",
+    "source": { "image": "Real images", "seed": "Seeded demo data", "wheel": "Wheel survey", "report": "Reports" },
+    "sideLabel": "Side",
+    "side": { "L": "Left", "R": "Right", "none": "Whole street" },
+    "lastObserved": "Last observed",
+    "seeded": "Seeded, not real coverage"
+  },
+  "capture": {
+    "title": "Photo walk",
+    "preview": "Camera preview",
+    "cameraStarting": "Starting camera…",
+    "httpsHint": "The live camera and compass need a secure connection (HTTPS) or localhost. Open this page over HTTPS on your phone; until then you can still choose or take a photo below.",
+    "cameraError": "Camera could not be started ({{message}}).",
+    "filePick": "Choose or take a photo",
+    "settings": "Settings",
+    "hfov": "Horizontal field of view (degrees, 30–120)",
+    "interval": "Auto-capture every (metres, 0 = manual only)",
+    "sessionId": "Session id",
+    "newSession": "New",
+    "note": "Note (optional)",
+    "notePlaceholder": "e.g. left side, Bhartendu Marg",
+    "enableSensors": "Enable sensors",
+    "auto": "Auto capture",
+    "takePhoto": "Take photo",
+    "captured": "Photo captured at {{time}}.",
+    "noFix": "No GPS position yet – enable sensors and wait for a fix before taking a photo.",
+    "captureFailed": "Could not capture the photo."
+  },
+  "sensors": {
+    "title": "Live sensors",
+    "position": "Position",
+    "accuracy": "GPS accuracy",
+    "heading": "Heading",
+    "pitch": "Pitch",
+    "sourceLabel": "Compass source",
+    "source": { "absolute": "Absolute compass", "relative": "Relative (uncalibrated) orientation", "none": "No compass" },
+    "quality": { "good": "good", "ok": "ok", "poor": "poor" },
+    "cardinal": { "n": "N", "ne": "NE", "e": "E", "se": "SE", "s": "S", "sw": "SW", "w": "W", "nw": "NW" },
+    "noFix": "Waiting for a GPS fix…",
+    "off": "Sensors off",
+    "noCompass": "No compass data",
+    "speed": "{{speed}} km/h",
+    "liveGps": "Position {{lat}}, {{lon}}, accuracy {{accuracy}} metres, {{quality}}.",
+    "liveHeading": "Heading {{heading}} degrees, {{cardinal}}.",
+    "livePitch": "Pitch {{pitch}} degrees.",
+    "geoError": {
+      "denied": "Location permission was denied. Allow location for this site and reload.",
+      "unavailable": "Location is unavailable right now.",
+      "timeout": "The location request timed out; still trying.",
+      "unsupported": "This browser has no geolocation."
+    },
+    "orientationDenied": "Motion sensor permission was denied; photos will be saved without a heading."
+  },
+  "queue": {
+    "title": "Upload queue",
+    "captured": "Captured",
+    "uploaded": "Uploaded",
+    "pending": "Pending",
+    "failed": "Failed",
+    "retry": "Retry now",
+    "offline": "Offline – uploads are paused.",
+    "uploading": "Uploading…",
+    "retryIn": "Upload failed; retrying in {{seconds}} s.",
+    "idle": "Nothing to upload.",
+    "lastError": "Last upload error: {{detail}}",
+    "errorHttp": "server responded with HTTP {{status}}",
+    "errorNetwork": "network error ({{message}})"
   },
   "map": { "label": "Map of accessible walking routes", "zoomIn": "Zoom in", "zoomOut": "Zoom out" },
   "units": { "m": "m" }

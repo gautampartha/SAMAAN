@@ -12,7 +12,7 @@ from sqlmodel import Session, func, select
 
 from api.db import get_session, init_db
 from api.models import Barrier, FootpathEdge, Meta
-from api.routers import layers
+from api.routers import images, layers
 from common import config
 from pipeline.graph.osm import load_nx_from_db
 
@@ -38,6 +38,7 @@ _origins = os.environ.get("SAMAAN_CORS_ORIGINS", "http://localhost:5173,http://1
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in _origins], allow_methods=["*"],
                    allow_headers=["*"])
 app.include_router(layers.router)
+app.include_router(images.router)
 
 
 @app.get("/health")

@@ -24,8 +24,8 @@ from api.db import init_db
 from api.models import Anchor, Barrier, Coverage, DemoRoute, FootpathEdge
 from common import config
 from common.crs import to_wgs84
-from common.state import compute_edge_state
 from pipeline.graph.osm import load_nx_from_db, write_meta
+from pipeline.state.recompute import recompute_states
 
 log = logging.getLogger(__name__)
 
@@ -208,20 +208,11 @@ def seed(session: Session, zone_cfg: dict[str, Any] | None = None, profiles_cfg:
         e.last_observed_at, e.observed_by = last, ("image" if obs else None)
     session.flush()
 
-    # Segment state (plan 6.5).
-    by_edge: dict[int, list[dict[str, Any]]] = {}
-    for b in barriers:
-        by_edge.setdefault(b.edge_id, []).append({"class": b.class_id, "severity": b.severity,
-                                                  "status": b.status, "confidence": b.confidence})
-    staleness = int(pipeline_cfg["state"]["staleness_days_permanent"])
-    counts = {"clear": 0, "blocked": 0, "unknown": 0}
-    for e in edges:
-        state, conf = compute_edge_state(by_edge.get(e.id, []), e.id in observed, e.last_observed_at,
-                                         profiles_cfg, staleness, now)
-        e.state, e.state_confidence, e.state_synthetic = state, conf, True
-        counts[state] += 1
+    # Segment state (plan 6.5) via the shared recompute step (seeded coverage marks state_synthetic).
     session.add(route)
     session.commit()
+    counts_all = recompute_states(session, now=now, profiles_cfg=profiles_cfg, pipeline_cfg=pipeline_cfg)
+    counts = {k: counts_all[k] for k in ("clear", "blocked", "unknown")}
     write_meta(session, seeded_at=now.isoformat(), random_seed=scfg["random_seed"], synthetic="true",
                seed_note="All Barrier/Coverage/DemoRoute rows and edge states are synthetic; exclude from eval.")
     return {"edges": len(edges), "barriers": len(barriers), "observed_edges": len(observed),

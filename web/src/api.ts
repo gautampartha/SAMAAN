@@ -66,11 +66,29 @@ export interface BarrierProps {
   synthetic: boolean;
 }
 
+export type CoverageSource = 'image' | 'seed' | 'wheel' | 'report';
+
 export interface CoverageProps {
   edge_id: number;
   observed: boolean;
   n_images: number;
   last_observed_at: string | null;
+  side: 'L' | 'R' | 'none';
+  source: CoverageSource | (string & {});
+}
+
+export type ImageSource = 'mapillary' | 'own' | 'report';
+
+export interface ImageProps {
+  id: number | string;
+  source: ImageSource | (string & {});
+  heading_deg: number | null;
+  hfov_deg: number;
+  captured_at: string | null;
+  attribution: string | null;
+  synthetic: boolean;
+  session_id: string | null;
+  has_photo: boolean;
 }
 
 export type AnchorKind = 'metro' | 'bus_stop' | 'hospital' | 'school';
@@ -94,10 +112,11 @@ export type BarrierFC = FeatureCollection<Point, BarrierProps>;
 export type CoverageFC = FeatureCollection<LineString, CoverageProps>;
 export type AnchorFC = FeatureCollection<Point, AnchorProps>;
 export type DemoFC = FeatureCollection<Point | LineString, DemoProps>;
+export type ImageFC = FeatureCollection<Point, ImageProps>;
 export type BarrierFeature = Feature<Point, BarrierProps>;
 
-export type LayerKey = 'footpaths' | 'barriers' | 'coverage' | 'anchors' | 'demo';
-export const LAYER_KEYS: readonly LayerKey[] = ['footpaths', 'barriers', 'coverage', 'anchors', 'demo'] as const;
+export type LayerKey = 'footpaths' | 'barriers' | 'coverage' | 'anchors' | 'demo' | 'images';
+export const LAYER_KEYS: readonly LayerKey[] = ['footpaths', 'barriers', 'coverage', 'anchors', 'demo', 'images'] as const;
 
 export interface LayerData {
   footpaths?: FootpathFC;
@@ -105,6 +124,7 @@ export interface LayerData {
   coverage?: CoverageFC;
   anchors?: AnchorFC;
   demo?: DemoFC;
+  images?: ImageFC;
 }
 
 export class ApiError extends Error {
@@ -134,7 +154,68 @@ export const api = {
   coverage: (signal?: AbortSignal) => getJson<CoverageFC>('/layers/coverage', signal),
   anchors: (signal?: AbortSignal) => getJson<AnchorFC>('/layers/anchors', signal),
   demo: (signal?: AbortSignal) => getJson<DemoFC>('/layers/demo', signal),
+  images: (signal?: AbortSignal) => getJson<ImageFC>('/layers/images', signal),
 };
+
+/** URL of the stored photo for an image feature (`has_photo` must be true). */
+export function imagePhotoUrl(id: number | string): string {
+  return `${API_URL}/images/${encodeURIComponent(String(id))}/photo`;
+}
+
+// ---------- Capture uploads (multipart POST /images) ----------
+
+export type HeadingSource = 'absolute' | 'relative' | 'none';
+
+/** One photo taken on a walk, as sent to `POST /images`. */
+export interface CaptureUpload {
+  blob: Blob;
+  lat: number;
+  lon: number;
+  gps_accuracy_m: number;
+  heading_deg: number | null;
+  pitch_deg: number | null;
+  hfov_deg: number;
+  /** ISO 8601 timestamp of the capture. */
+  captured_at: string;
+  session_id: string;
+  note: string;
+  width: number;
+  height: number;
+  heading_source: HeadingSource;
+}
+
+export interface UploadedImage {
+  id: number | string;
+  [key: string]: unknown;
+}
+
+export async function uploadImage(rec: CaptureUpload, signal?: AbortSignal): Promise<UploadedImage> {
+  const fd = new FormData();
+  const ts = Number.isFinite(Date.parse(rec.captured_at)) ? Date.parse(rec.captured_at) : Date.now();
+  fd.append('photo', rec.blob, `${ts}.jpg`);
+  fd.append('source', 'own');
+  fd.append('lat', String(rec.lat));
+  fd.append('lon', String(rec.lon));
+  fd.append('gps_accuracy_m', String(rec.gps_accuracy_m));
+  if (rec.heading_deg !== null) fd.append('heading_deg', String(rec.heading_deg));
+  if (rec.pitch_deg !== null) fd.append('pitch_deg', String(rec.pitch_deg));
+  fd.append('hfov_deg', String(rec.hfov_deg));
+  fd.append('captured_at', rec.captured_at);
+  fd.append('session_id', rec.session_id);
+  fd.append('note', rec.note);
+  fd.append('width', String(rec.width));
+  fd.append('height', String(rec.height));
+  fd.append('heading_source', rec.heading_source);
+  const res = await fetch(`${API_URL}/images`, { method: 'POST', body: fd, signal, headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new ApiError('/images', res.status);
+  return (await res.json()) as UploadedImage;
+}
+
+/** Ask the API to recompute coverage after uploads. Errors are the caller's to ignore. */
+export async function recomputeCoverage(signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`${API_URL}/coverage/recompute`, { method: 'POST', signal, headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new ApiError('/coverage/recompute', res.status);
+}
 
 /** Pick the name in the current language, falling back to English. */
 export function localizedName(props: { name_en: string; name_hi?: string | null }, lang: Lang): string {

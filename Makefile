@@ -4,7 +4,7 @@ PY      := .venv/bin/python
 UV      := uv
 DB      := data/processed/samaan.sqlite
 
-.PHONY: setup seed graph graph-export graph-import graph-validate api test lint web web-install clean-db help
+.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary api test lint web web-install clean-db help
 
 help:
 	@echo "make setup        create .venv (Python 3.11) and install deps"
@@ -13,6 +13,8 @@ help:
 	@echo "make graph-import FILE=path.geojson   load a human-corrected graph (then make seed)"
 	@echo "make graph-validate                   print the validation report"
 	@echo "make seed         synthetic barriers/coverage into $(DB) (builds the graph if missing) [synthetic=true]"
+	@echo "make ingest-mapillary   MAPILLARY_TOKEN=... download zone images (add DOWNLOAD=1 for thumbnails)"
+	@echo "make coverage     recompute image coverage + segment states"
 	@echo "make api          serve FastAPI on http://127.0.0.1:8000 (docs at /docs)"
 	@echo "make test         run pytest"
 	@echo "make web-install  npm install in web/"
@@ -38,6 +40,12 @@ graph-validate:
 seed:
 	@test -f $(DB) || $(MAKE) graph
 	$(PY) -m pipeline.seed.synthetic
+
+ingest-mapillary:
+	$(PY) -m pipeline.ingest.mapillary $(if $(DOWNLOAD),--download,) $(if $(MAX),--max $(MAX),)
+
+coverage:
+	$(PY) -m pipeline.coverage.run
 
 api:
 	$(PY) -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload

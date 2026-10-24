@@ -29,7 +29,34 @@ def init_db(path: Path | None = None) -> Engine:
 
     engine = get_engine(path)
     SQLModel.metadata.create_all(engine)
+    add_missing_columns(engine)
     return engine
+
+
+def add_missing_columns(engine: Engine) -> list[str]:
+    """Hackathon-grade migration: ADD COLUMN for model columns absent from an existing SQLite
+    table (create_all never alters tables). Returns the statements applied."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    applied: list[str] = []
+    with engine.begin() as conn:
+        for table in SQLModel.metadata.sorted_tables:
+            if table.name not in insp.get_table_names():
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                ddl = col.type.compile(engine.dialect)
+                default = ""
+                if col.default is not None and getattr(col.default, "arg", None) is not None and not callable(col.default.arg):
+                    arg = col.default.arg
+                    default = f" DEFAULT {int(arg) if isinstance(arg, bool) else repr(arg)}"
+                stmt = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl}{default}'
+                conn.execute(text(stmt))
+                applied.append(stmt)
+    return applied
 
 
 def reset_db(path: Path | None = None) -> Engine:

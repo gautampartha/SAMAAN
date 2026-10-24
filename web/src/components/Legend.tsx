@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { LAYER_KEYS, type LayerKey } from '../api';
+import { IMAGE_COLOURS } from './MapView';
 
 interface LegendProps {
   visible: Record<LayerKey, boolean>;
@@ -33,6 +34,16 @@ function AnchorSwatch() {
   return (
     <svg className="swatch" viewBox="0 0 56 24" width="56" height="24" aria-hidden="true" focusable="false">
       <circle cx="28" cy="12" r="7" fill="#ffffff" stroke="#263238" strokeWidth="3" />
+    </svg>
+  );
+}
+
+/** Image position: coloured circle plus the heading arrow (shown when a heading is known). */
+function ImageSwatch({ colour, ring, radius }: { colour: string; ring: string; radius: number }) {
+  return (
+    <svg className="swatch" viewBox="0 0 56 24" width="56" height="24" aria-hidden="true" focusable="false">
+      <circle cx="22" cy="12" r={radius} fill={colour} stroke={ring} strokeWidth="2" />
+      <path d="M40 3 L46 19 L40 15 L34 19 Z" fill="#111111" stroke="#ffffff" strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -104,7 +115,25 @@ export default function Legend({ visible, onToggle, onClose }: LegendProps) {
         </div>
         <div className="legend__row">
           <dt><LineSwatch colour="rgba(21,101,192,0.4)" width={10} /> {t('layers.coverage')}</dt>
-          <dd>{t('legend.coverageObserved')}; {t('legend.coverageUnobserved')}</dd>
+          <dd>
+            {t('legend.coverageObserved')}; {t('legend.coverageUnobserved')}. {t('legend.coverageDetail')}
+          </dd>
+        </div>
+        <div className="legend__row">
+          <dt><ImageSwatch colour={IMAGE_COLOURS.own} ring="#111111" radius={6} /> {t('images.source.own')}</dt>
+          <dd>{t('legend.imageOwn')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><ImageSwatch colour={IMAGE_COLOURS.mapillary} ring="#ffffff" radius={5} /> {t('images.source.mapillary')}</dt>
+          <dd>{t('legend.imageMapillary')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><ImageSwatch colour={IMAGE_COLOURS.report} ring="#ffffff" radius={5} /> {t('images.source.report')}</dt>
+          <dd>{t('legend.imageReport')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt>{t('legend.imageArrowTitle')}</dt>
+          <dd>{t('legend.imageArrow')}</dd>
         </div>
       </dl>
     </div>
