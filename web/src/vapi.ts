@@ -10,6 +10,8 @@ import type { Lang } from './i18n';
 
 export interface VoiceAgentConfig {
   publicKey: string;
+  /** Start this existing assistant instead of the inline one (public keys may forbid transient assistants). */
+  assistantId?: string | null;
   lang: Lang;
   userId: number | string | null;
   profile: Profile;
@@ -214,8 +216,14 @@ export async function startVoiceAgent(cfg: VoiceAgentConfig, handlers: VoiceAgen
     }
   });
 
-  const overrides = { variableValues: (assistantConfig(cfg) as { variableValues: Record<string, string> }).variableValues };
-  await vapi.start(assistantConfig(cfg) as never, overrides as never);
+  const full = assistantConfig(cfg) as { variableValues: Record<string, string> } & Record<string, unknown>;
+  const { variableValues, ...assistant } = full;
+  if (cfg.assistantId) {
+    // Persistent assistant: only per-call values are overridden (the greeting, the variables).
+    await vapi.start(cfg.assistantId, { variableValues, firstMessage: cfg.greeting } as never);
+  } else {
+    await vapi.start(assistant as never, { variableValues } as never);
+  }
 
   return {
     stop: () => {

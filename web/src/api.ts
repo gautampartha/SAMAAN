@@ -978,6 +978,8 @@ export interface VoiceConfig {
   enabled: boolean;
   provider: 'vapi' | null;
   public_key: string | null;
+  /** Pre-created assistant (set when the public key forbids transient assistants). */
+  assistant_id?: string | null;
   tools: string[];
 }
 

@@ -116,7 +116,7 @@ export interface RecognizerHandlers {
   onResult: (text: string) => void;
   /** Interim text while the user is still speaking (may be empty). */
   onInterim?: (text: string) => void;
-  onError?: (kind: RecognitionErrorKind) => void;
+  onError?: (kind: RecognitionErrorKind, detail?: string) => void;
   onEnd?: () => void;
   onStart?: () => void;
 }
@@ -147,7 +147,7 @@ function createNativeRecognizer(lang: Lang, handlers: RecognizerHandlers): Recog
       const { SpeechRecognition } = await import('@capacitor-community/speech-recognition');
       const avail = await SpeechRecognition.available();
       if (!avail.available) {
-        handlers.onError?.('other');
+        handlers.onError?.('other', 'speech recognition not available on this device');
         return;
       }
       const perm = await SpeechRecognition.requestPermissions();
@@ -170,7 +170,8 @@ function createNativeRecognizer(lang: Lang, handlers: RecognizerHandlers): Recog
         await partial.remove();
       }
     } catch (err) {
-      if (!disposed) handlers.onError?.(classify(String((err as Error)?.message ?? err)));
+      const text = String((err as Error)?.message ?? err);
+      if (!disposed) handlers.onError?.(classify(text), text);
     } finally {
       busy = false;
       if (!disposed) handlers.onEnd?.();

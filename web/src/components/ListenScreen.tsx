@@ -61,6 +61,7 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
   const [typed, setTyped] = useState('');
   const [showTyping, setShowTyping] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  const [micDetail, setMicDetail] = useState<string | null>(null);
   const [handsFree, setHandsFree] = useState(true);
   const recRef = useRef<Recognizer | null>(null);
   const phaseRef = useRef<Phase>('idle');
@@ -328,8 +329,9 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
         setInterim('');
         handleTextRef.current(text);
       },
-      onError: (kind) => {
+      onError: (kind, detail) => {
         if (kind === 'aborted') return;
+        setMicDetail(detail ?? null);
         if (kind === 'no-speech') {
           silentRef.current += 1;
           if (silentRef.current >= MAX_SILENT_ROUNDS) setMessage(t('listen.say.tapWhenReady'));
@@ -423,7 +425,7 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
     const f = sensors.fixRef.current;
     try {
       const agent = await startVoiceAgent(
-        { publicKey: voiceCfg.public_key, lang, userId: user?.id ?? null, profile: user?.profile ?? 'blind_low_vision', lat: f?.lat ?? null, lon: f?.lon ?? null, greeting: t('listen.say.greeting') },
+        { publicKey: voiceCfg.public_key, assistantId: voiceCfg.assistant_id ?? null, lang, userId: user?.id ?? null, profile: user?.profile ?? 'blind_low_vision', lat: f?.lat ?? null, lon: f?.lon ?? null, greeting: t('listen.say.greeting') },
         {
           onCallStart: () => {
             setCallState('on');
@@ -616,6 +618,7 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
         {micError && (
           <p className="listen__error" role="alert">
             {t(`listen.micError.${micError}`)}
+            {micDetail && <span className="listen__errorDetail"> ({micDetail})</span>}
           </p>
         )}
         {session && step && (

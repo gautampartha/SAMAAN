@@ -27,6 +27,7 @@ log = logging.getLogger("samaan.voice")
 router = APIRouter(prefix="/voice", tags=["voice"])
 
 PUBLIC_KEY_ENV = "VAPI_PUBLIC_KEY"
+ASSISTANT_ID_ENV = "VAPI_ASSISTANT_ID"
 VOICE_USER_NAME = "Voice traveller"
 
 TOOL_NAMES = ("find_place", "report_barrier", "start_navigation", "stop_navigation", "repeat_step", "where_am_i")
@@ -35,7 +36,10 @@ TOOL_NAMES = ("find_place", "report_barrier", "start_navigation", "stop_navigati
 @router.get("/config")
 def voice_config() -> dict[str, Any]:
     key = os.environ.get(PUBLIC_KEY_ENV, "").strip()
-    return {"enabled": bool(key), "provider": "vapi" if key else None, "public_key": key or None, "tools": list(TOOL_NAMES)}
+    assistant_id = os.environ.get(ASSISTANT_ID_ENV, "").strip() or None
+    # Public keys may forbid transient (inline) assistants; then the app starts the pre-created one by id
+    # (scripts/vapi_assistant.py creates/updates it with the private key, never shipped to the phone).
+    return {"enabled": bool(key), "provider": "vapi" if key else None, "public_key": key or None, "assistant_id": assistant_id, "tools": list(TOOL_NAMES)}
 
 
 def _args(call: dict[str, Any]) -> dict[str, Any]:
