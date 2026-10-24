@@ -97,11 +97,7 @@ api:
 	$(PY) -m uvicorn api.main:app --host $(HOST) --port 8000 --reload
 
 # For phones on the same Wi-Fi (native app / LAN demo): make api-lan  (binds all interfaces)
-# Live voice agent for Listen mode: VAPI_PUBLIC_KEY=<public key> [VAPI_ASSISTANT_ID=<id>] make api-lan  (never commit keys)
-# If the public key forbids transient assistants, create the assistant once (private key, not shipped):
-#   VAPI_PRIVATE_KEY=<private key> make vapi-assistant API_URL=https://<tunnel>
-vapi-assistant:
-	$(PY) scripts/vapi_assistant.py --api-url $(API_URL)
+# Listen-mode conversation model (NVIDIA NIM, config/voice.yaml): NVIDIA_API_KEY=<key> make api-lan  (never commit the key)
 api-lan:
 	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 

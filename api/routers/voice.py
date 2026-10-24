@@ -1,61 +1,59 @@
-"""Voice agent (Vapi) support for Listen mode.
+"""Listen-mode conversation (POST /voice/chat) and its config (GET /voice/config).
 
-The phone talks to Vapi directly with the *public* key (served by GET /voice/config so the app
-needs no rebuild when the key changes). The assistant is created transiently by the app; its tools
-point back here (POST /voice/tools, reachable through the tunnel) so the LLM can search places,
-file a barrier report, and ask the app to start / stop / repeat navigation. Keys live in the
-environment only: VAPI_PUBLIC_KEY (never committed).
+Speech recognition and speech output happen on the phone. The recognised sentence, the
+traveller's location and the current navigation step come here; an OpenAI-compatible model
+(NVIDIA NIM, config/voice.yaml, key in NVIDIA_API_KEY) answers in one or two sentences and may
+call tools: find_place / report_barrier run here, start/stop/repeat navigation go back to the app
+as actions. Without a key the app keeps its rule-based on-device dialogue.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from api.db import get_session
 from api.models import User
 from api.routers.search import search_places
+from api.services import voice_llm
 from api.services.reports import ReportError, create_report, create_user, report_item
-from common import config
 
 log = logging.getLogger("samaan.voice")
 router = APIRouter(prefix="/voice", tags=["voice"])
 
-PUBLIC_KEY_ENV = "VAPI_PUBLIC_KEY"
-ASSISTANT_ID_ENV = "VAPI_ASSISTANT_ID"
 VOICE_USER_NAME = "Voice traveller"
-
-TOOL_NAMES = ("find_place", "report_barrier", "start_navigation", "stop_navigation", "repeat_step", "where_am_i")
+TOOL_NAMES = tuple(t["function"]["name"] for t in voice_llm.TOOLS)
 
 
 @router.get("/config")
 def voice_config() -> dict[str, Any]:
-    key = os.environ.get(PUBLIC_KEY_ENV, "").strip()
-    assistant_id = os.environ.get(ASSISTANT_ID_ENV, "").strip() or None
-    # Public keys may forbid transient (inline) assistants; then the app starts the pre-created one by id
-    # (scripts/vapi_assistant.py creates/updates it with the private key, never shipped to the phone).
-    return {"enabled": bool(key), "provider": "vapi" if key else None, "public_key": key or None, "assistant_id": assistant_id, "tools": list(TOOL_NAMES)}
+    on = voice_llm.enabled()
+    c = voice_llm.vcfg()
+    return {"enabled": on, "provider": c["provider"] if on else None, "model": c["models"][0] if on else None, "tools": list(TOOL_NAMES)}
 
 
-def _args(call: dict[str, Any]) -> dict[str, Any]:
-    fn = call.get("function") or {}
-    raw = fn.get("arguments", {})
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
-            raw = {}
-    return raw if isinstance(raw, dict) else {}
+class Turn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(max_length=2000)
 
 
-def _name(call: dict[str, Any]) -> str:
-    fn = call.get("function") or {}
-    return str(fn.get("name") or call.get("name") or "")
+class Location(BaseModel):
+    lat: float
+    lon: float
+    accuracy_m: float | None = None
+
+
+class ChatIn(BaseModel):
+    messages: list[Turn] = Field(min_length=1, max_length=40)
+    lang: str = Field("en", pattern="^(en|hi)$")
+    user_id: int | str | None = None
+    location: Location | None = None
+    nav_context: str | None = Field(None, max_length=600)
+    navigating: bool = False
 
 
 def _voice_user(session: Session, language: str) -> User:
@@ -65,16 +63,8 @@ def _voice_user(session: Session, language: str) -> User:
     return u
 
 
-def _float(v: Any) -> float | None:
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f else None
-
-
-def run_tool(session: Session, name: str, args: dict[str, Any], variables: dict[str, Any], lang: str) -> str:
-    """Execute one tool; returns the flat string Vapi reads back to the LLM."""
+def run_tool(session: Session, name: str, args: dict[str, Any], *, lang: str, location: tuple[float, float] | None, user_id: int | str | None) -> str:
+    """Execute a server-side tool; the returned string is what the model reads."""
     if name == "find_place":
         q = str(args.get("query") or "").strip()
         if not q:
@@ -88,52 +78,42 @@ def run_tool(session: Session, name: str, args: dict[str, Any], variables: dict[
             parts.append(f"{'Top match' if i == 0 else 'Other'}: {nm} (lat {h['lat']:.6f}, lon {h['lon']:.6f})")
         return ". ".join(parts) + "."
     if name == "report_barrier":
-        class_id = str(args.get("class_id") or "fixed_obstacle")
-        lat = _float(args.get("lat")) or _float(variables.get("lat"))
-        lon = _float(args.get("lon")) or _float(variables.get("lon"))
-        if lat is None or lon is None:
+        if location is None:
             return "Cannot report: the traveller's location is unknown. Ask them to allow location access."
-        uid = args.get("user_id") or variables.get("user_id")
+        class_id = str(args.get("class_id") or "fixed_obstacle")
         user = None
         try:
-            user = session.get(User, int(uid)) if uid is not None else None
+            user = session.get(User, int(user_id)) if user_id is not None else None
         except (TypeError, ValueError):
             user = None
         if user is None:
             user = _voice_user(session, lang)
-        note = str(args.get("note") or "Reported by voice (Vapi) in Listen mode, no photo.")[:280]
+        note = str(args.get("note") or "Reported by voice in Listen mode, no photo.")[:280]
         try:
-            rep = create_report(session, user_id=int(user.id), class_id=class_id, severity=3, lat=lat, lon=lon, photo=None, note=note,
-                                device_lat=lat, device_lon=lon)
+            rep = create_report(session, user_id=int(user.id), class_id=class_id, severity=3, lat=location[0], lon=location[1],
+                                photo=None, note=note, device_lat=location[0], device_lon=location[1])
         except ReportError as e:
             return f"Report failed: {e.code}."
         item = report_item(session, rep)
         return f"Report {item['id']} sent for {class_id}, status {item['status']}. Thank the traveller; others will confirm it."
-    if name in ("start_navigation", "stop_navigation", "repeat_step"):
-        # The app acts on the tool-calls client message; the LLM only needs an acknowledgement.
-        return "ok"
-    if name == "where_am_i":
-        return "Answer from the latest 'Navigation context' system message; if there is none, say navigation has not started."
     return f"Unknown tool {name}."
 
 
-@router.post("/tools")
-async def tools_webhook(request: Request, session: Session = Depends(get_session)) -> dict[str, Any]:
-    body = await request.json()
-    msg = body.get("message") or {}
-    if msg.get("type") != "tool-calls":
-        return {"results": []}
-    calls = msg.get("toolCallList") or msg.get("toolCalls") or []
-    call_info = msg.get("call") or {}
-    variables = ((call_info.get("assistantOverrides") or {}).get("variableValues")) or {}
-    lang = str(variables.get("lang") or "en")
-    results = []
-    for c in calls:
-        name = _name(c)
-        try:
-            text = run_tool(session, name, _args(c), variables, lang)
-            results.append({"toolCallId": c.get("id"), "result": text})
-        except Exception as e:  # noqa: BLE001 - always answer Vapi with 200
-            log.exception("voice tool %s failed", name)
-            results.append({"toolCallId": c.get("id"), "error": f"{name} failed: {e}"})
-    return {"results": results}
+@router.post("/chat")
+def chat(body: ChatIn, session: Session = Depends(get_session)) -> dict[str, Any]:
+    if not voice_llm.enabled():
+        raise HTTPException(503, "voice model not configured (NVIDIA_API_KEY)")
+    loc = (body.location.lat, body.location.lon) if body.location else None
+    history = [voice_llm.ChatTurn(t.role, t.content) for t in body.messages]
+    try:
+        res = voice_llm.chat(
+            history,
+            lang=body.lang,
+            location=loc,
+            nav_context=body.nav_context,
+            navigating=body.navigating,
+            run_tool=lambda name, args: run_tool(session, name, args, lang=body.lang, location=loc, user_id=body.user_id),
+        )
+    except voice_llm.ModelError as e:
+        raise HTTPException(502, f"voice model unavailable: {e}") from e
+    return {"reply": res.reply, "memory": res.memory, "actions": res.actions, "tool_log": res.tool_log, "model": res.model}

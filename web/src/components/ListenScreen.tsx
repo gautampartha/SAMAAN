@@ -8,7 +8,7 @@
 // buttons remain for keyboard users and browsers without speech.
 import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { localizedName, reportApi, routeApi, voiceApi, type ReportClassId, type ReportItem, type SearchResult, type VoiceConfig } from '../api';
+import { localizedName, reportApi, routeApi, voiceApi, type ReportClassId, type ReportItem, type SearchResult, type VoiceConfig, type VoiceTurn } from '../api';
 import { formatDistance } from '../geo';
 import type { Lang } from '../i18n';
 import { Icon } from '../icons';
@@ -17,7 +17,6 @@ import { type PlannerPoint, type RoutePlannerApi } from '../routePlanner';
 import type { Sensors } from '../sensors';
 import { createRecognizer, parseBarrierClass, parseCommand, speak, sttSupported, stopSpeaking, ttsSupported, type Recognizer } from '../speech';
 import { useUser } from '../user';
-import { describeError, startVoiceAgent, type VoiceAgent } from '../vapi';
 import { stepInstruction, stepStreet, useAnnouncer } from './useAnnouncer';
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'confirm' | 'routing' | 'navigating' | 'reportClass' | 'reportConfirm' | 'reporting';
@@ -47,6 +46,17 @@ interface ListenScreenProps {
 }
 
 const MAX_SILENT_ROUNDS = 2;
+
+/** 'nvidia/nemotron-3.5-lightning-30b-a3b' -> 'Nemotron 3.5 Lightning' for the chip. */
+function shortModel(id: string | null | undefined): string {
+  if (!id) return 'NVIDIA';
+  const tail = id.split('/').pop() ?? id;
+  return tail
+    .replace(/-\d+b(-a\d+b)?$/i, '')
+    .split('-')
+    .map((w) => (/^\d/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+}
 const DOUBLE_TAP_MS = 400;
 
 export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onDemo, onEnd, onReport, onHome, onReported, autoGreet, headingRef }: ListenScreenProps) {
@@ -76,14 +86,12 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
   const turnIdRef = useRef(0);
   const lastTapRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
-  // ---- Live voice agent (Vapi) when the server has a key; otherwise on-device speech ----
+  // ---- Conversation model (NVIDIA, via POST /voice/chat) when the server has a key; rules otherwise ----
   const [voiceCfg, setVoiceCfg] = useState<VoiceConfig | null>(null);
-  const agentRef = useRef<VoiceAgent | null>(null);
-  const [callState, setCallState] = useState<'off' | 'connecting' | 'on'>('off');
-  const [assistantSpeaking, setAssistantSpeaking] = useState(false);
-  const [callError, setCallError] = useState<string | null>(null);
-  const useAgent = Boolean(voiceCfg?.enabled && voiceCfg.public_key) && !callError;
-  const callOn = callState === 'on';
+  const [modelDown, setModelDown] = useState<string | null>(null);
+  const useAgent = Boolean(voiceCfg?.enabled) && !modelDown;
+  const chatRef = useRef<VoiceTurn[]>([]);
+  const chatAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     const ac = new AbortController();
     voiceApi
@@ -92,11 +100,11 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
         if (!ac.signal.aborted) setVoiceCfg(c);
       })
       .catch(() => {
-        if (!ac.signal.aborted) setVoiceCfg({ enabled: false, provider: null, public_key: null, tools: [] });
+        if (!ac.signal.aborted) setVoiceCfg({ enabled: false, provider: null, model: null, tools: [] });
       });
     return () => ac.abort();
   }, []);
-  const { liveText, compose } = useAnnouncer(nav, lang, callOn);
+  const { liveText } = useAnnouncer(nav, lang, false);
   const stt = sttSupported();
   const tts = ttsSupported();
   const session = nav.state.session;
@@ -213,12 +221,8 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
     }
   }, [sensors.fixRef, nav.state.position, nav.state.session, user, say, sayAndListen, t, onReported]);
 
-  const handleText = useCallback(
-    (raw: string) => {
-      const text = raw.trim().toLowerCase();
-      if (!text) return;
-      silentRef.current = 0;
-      pushTurn('you', text);
+  const handleRules = useCallback(
+    (text: string) => {
       const cmd = parseCommand(text);
       const p = phaseRef.current;
 
@@ -313,7 +317,35 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
           sayAndListen(t('listen.say.searchFailed'));
         });
     },
-    [nav, sayWhere, sayHelp, startReport, sendReport, onEnd, onHome, say, sayAndListen, t, goTo, onDemo, lang, pushTurn],
+    [nav, sayWhere, sayHelp, startReport, sendReport, onEnd, onHome, say, sayAndListen, t, goTo, onDemo, lang],
+  );
+  const handleRulesRef = useRef(handleRules);
+  handleRulesRef.current = handleRules;
+
+  /** Every recognised sentence: the model when configured (rules on failure), else the rule-based dialogue. */
+  const handleText = useCallback(
+    (raw: string) => {
+      const text = raw.trim().toLowerCase();
+      if (!text) return;
+      silentRef.current = 0;
+      pushTurn('you', text);
+      const p = phaseRef.current;
+      const inRuleDialogue = p === 'reportClass' || p === 'reportConfirm' || p === 'confirm';
+      const cmd = parseCommand(text);
+      // Local shortcuts stay instant even with the model: demo, home, repeat while walking.
+      if (cmd === 'demo' || cmd === 'home' || (cmd === 'repeat' && nav.state.session)) {
+        handleRulesRef.current(text);
+        return;
+      }
+      if (useAgent && !inRuleDialogue) {
+        void askModelRef.current(text).then((handled) => {
+          if (!handled) handleRulesRef.current(text);
+        });
+        return;
+      }
+      handleRulesRef.current(text);
+    },
+    [pushTurn, useAgent, nav.state.session],
   );
   const handleTextRef = useRef(handleText);
   handleTextRef.current = handleText;
@@ -356,128 +388,92 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
-  // While in a call the assistant voices the navigation announcements and gets them as context.
-  const announcement = nav.state.announcement;
-  useEffect(() => {
-    const agent = agentRef.current;
-    if (!agent || !callOn || !announcement) return;
-    const text = compose(announcement);
-    if (!text) return;
-    agent.say(text);
-    const street = stepStreet(announcement.step, lang) ?? '';
-    agent.addContext(`Navigation context: ${text}${street ? ` Street: ${street}.` : ''} Remaining ${Math.round(nav.state.remainingM)} m.`);
-    // compose/nav.state change every tick; the announcement id is the trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [announcement?.id, callOn]);
-  useEffect(() => {
-    if (!callOn) return;
-    const push = () => {
-      const f = sensors.fixRef.current;
-      if (f) agentRef.current?.addContext(`Traveller location: lat ${f.lat.toFixed(6)}, lon ${f.lon.toFixed(6)}, accuracy ${Math.round(f.accuracy)} m.`);
-    };
-    push();
-    const id = window.setInterval(push, 20000);
-    return () => window.clearInterval(id);
-  }, [callOn, sensors.fixRef]);
+  /** Context the model needs for "where am I" and reports: current step, street, remaining distance. */
+  const navContext = useCallback((): string | null => {
+    const st = nav.state;
+    if (!st.session) return null;
+    const step = st.currentStep;
+    const d = formatDistance(st.distanceToStep);
+    const street = stepStreet(step, lang);
+    const parts = [`in ${d.value} ${t(`units.${d.unit}`)}: ${stepInstruction(step, lang)}`];
+    if (street) parts.push(`street: ${street}`);
+    parts.push(`remaining ${Math.round(st.remainingM)} m`);
+    if (st.arrived) parts.push('arrived at the destination');
+    return parts.join('; ');
+  }, [nav.state, lang, t]);
 
-  const onToolCall = useCallback(
-    (name: string, args: Record<string, unknown>) => {
-      if (name === 'start_navigation') {
-        const lat = Number(args.lat);
-        const lon = Number(args.lon);
-        if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          setPhase('routing');
-          void onRoute({ lat, lon, label: String(args.name ?? '') }).then((res) => {
-            if (res !== 'ok') {
-              setPhase('idle');
-              agentRef.current?.addContext(`Navigation could not start: ${res === 'geoDenied' ? 'location permission denied' : 'location unavailable'}. Tell the traveller in one sentence.`);
+  /** Send one recognised sentence to the model; apply its actions; speak its reply; listen again. */
+  const askModel = useCallback(
+    async (text: string): Promise<boolean> => {
+      chatAbortRef.current?.abort();
+      const ac = new AbortController();
+      chatAbortRef.current = ac;
+      const history = [...chatRef.current.slice(-11), { role: 'user' as const, content: text }];
+      const fix = sensors.fixRef.current;
+      setPhase('thinking');
+      try {
+        const res = await voiceApi.chat(
+          {
+            messages: history,
+            lang,
+            user_id: user?.id ?? null,
+            location: fix ? { lat: fix.lat, lon: fix.lon, accuracy_m: fix.accuracy } : null,
+            nav_context: navContext(),
+            navigating: Boolean(nav.state.session),
+          },
+          ac.signal,
+        );
+        if (ac.signal.aborted) return true;
+        chatRef.current = [...history, { role: 'assistant', content: res.memory ?? res.reply }];
+        let routing = false;
+        for (const a of res.actions) {
+          if (a.name === 'start_navigation') {
+            const lat = Number(a.args.lat);
+            const lon = Number(a.args.lon);
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+              routing = true;
+              setPhase('routing');
+              void onRoute({ lat, lon, label: String(a.args.name ?? '') }).then((r) => {
+                if (r !== 'ok') {
+                  setPhase('idle');
+                  sayAndListen(t(`home.errors.${r}`) + ' ' + t('listen.say.tryDemo'));
+                }
+              });
             }
-          });
+          } else if (a.name === 'stop_navigation') {
+            onEnd();
+            setPhase('idle');
+          } else if (a.name === 'repeat_step') {
+            nav.repeat();
+          }
         }
-      } else if (name === 'stop_navigation') {
-        onEnd();
-        setPhase('idle');
-      } else if (name === 'repeat_step') {
-        nav.repeat();
-      } else if (name === 'report_barrier') {
-        pushTurn('samaan', t('listen.say.reportSending'));
+        if (res.tool_log.some((l) => l.name === 'report_barrier' && l.result.includes('sent'))) pushTurn('samaan', t('listen.say.reportSending'));
+        if (!routing) setPhase(nav.state.session ? 'navigating' : 'idle');
+        if (routing) say(res.reply);
+        else sayAndListen(res.reply);
+        return true;
+      } catch (err) {
+        if (ac.signal.aborted) return true;
+        console.warn('[voice chat]', err);
+        setModelDown(err instanceof Error ? err.message : String(err));
+        setPhase(nav.state.session ? 'navigating' : 'idle');
+        return false;
       }
     },
-    [onRoute, onEnd, nav, pushTurn, t],
+    [lang, user, sensors.fixRef, navContext, nav, onRoute, onEnd, say, sayAndListen, pushTurn, t],
   );
-  const onToolCallRef = useRef(onToolCall);
-  onToolCallRef.current = onToolCall;
-
-  const endCall = useCallback(() => {
-    agentRef.current?.stop();
-    agentRef.current = null;
-    setCallState('off');
-    setAssistantSpeaking(false);
-  }, []);
-
-  const startCall = useCallback(async () => {
-    if (!voiceCfg?.public_key || agentRef.current) return;
-    stopSpeaking();
-    recRef.current?.stop();
-    setCallError(null);
-    setCallState('connecting');
-    setMessage(t('listen.callConnecting'));
-    const f = sensors.fixRef.current;
-    try {
-      const agent = await startVoiceAgent(
-        { publicKey: voiceCfg.public_key, assistantId: voiceCfg.assistant_id ?? null, lang, userId: user?.id ?? null, profile: user?.profile ?? 'blind_low_vision', lat: f?.lat ?? null, lon: f?.lon ?? null, greeting: t('listen.say.greeting') },
-        {
-          onCallStart: () => {
-            setCallState('on');
-            setMessage(t('listen.say.greeting'));
-          },
-          onCallEnd: () => {
-            agentRef.current = null;
-            setCallState('off');
-            setAssistantSpeaking(false);
-          },
-          onSpeaking: setAssistantSpeaking,
-          onTranscript: (role, text, final) => {
-            if (!final) {
-              if (role === 'user') setInterim(text);
-              return;
-            }
-            setInterim('');
-            if (role === 'assistant') setMessage(text);
-            pushTurn(role === 'user' ? 'you' : 'samaan', text);
-          },
-          onToolCall: (name, args) => onToolCallRef.current(name, args),
-          onError: (msg) => {
-            console.warn('[vapi]', msg);
-            setCallError(msg);
-            agentRef.current = null;
-            setCallState('off');
-            setMessage(t('listen.callError', { message: msg }));
-          },
-        },
-      );
-      agentRef.current = agent;
-    } catch (err) {
-      const msg = describeError(err);
-      console.warn('[vapi start]', err);
-      setCallError(msg);
-      setCallState('off');
-      setMessage(t('listen.callError', { message: msg }));
-    }
-  }, [voiceCfg, lang, user, sensors.fixRef, t, pushTurn]);
-  useEffect(() => () => agentRef.current?.stop(), []);
+  const askModelRef = useRef(askModel);
+  askModelRef.current = askModel;
+  useEffect(() => () => chatAbortRef.current?.abort(), []);
 
   // Greeting on arrival from onboarding (or when Listen is the chosen mode): speak, then listen.
   const greetedRef = useRef(false);
   useEffect(() => {
-    if (!autoGreet || greetedRef.current || session || voiceCfg === null) return;
+    if (!autoGreet || greetedRef.current || session) return;
     greetedRef.current = true;
-    const id = window.setTimeout(() => {
-      if (useAgent) void startCall();
-      else sayAndListen(t('listen.say.greeting'));
-    }, 300);
+    const id = window.setTimeout(() => sayAndListen(t('listen.say.greeting')), 300);
     return () => window.clearTimeout(id);
-  }, [autoGreet, session, sayAndListen, t, voiceCfg, useAgent, startCall]);
+  }, [autoGreet, session, sayAndListen, t]);
 
   // Routing outcome: the engine took over, or the planner reported an error.
   useEffect(() => {
@@ -495,11 +491,6 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
   }, [plannerError, sayAndListen, t]);
 
   const toggleListening = useCallback(() => {
-    if (useAgent) {
-      if (callState === 'off') void startCall();
-      else endCall();
-      return;
-    }
     if (!stt) return;
     silentRef.current = 0;
     if (phase === 'listening') {
@@ -510,7 +501,7 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
     stopSpeaking();
     if (!session && phase === 'idle' && !message) setMessage(t('listen.say.whereTo'));
     listen();
-  }, [stt, phase, session, message, listen, t, useAgent, callState, startCall, endCall]);
+  }, [stt, phase, session, message, listen, t]);
 
   // Whole-screen gestures: single tap = talk, double tap = repeat the step (while navigating).
   const onScreenClick = (e: MouseEvent<HTMLElement>) => {
@@ -535,15 +526,7 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
     handleText(text);
   };
 
-  const orbLabel = useAgent
-    ? callState === 'connecting'
-      ? t('listen.callConnecting')
-      : callState === 'on'
-        ? assistantSpeaking
-          ? t('listen.assistantSpeaking')
-          : t('listen.callOn')
-        : t('listen.startCall')
-    : !stt
+  const orbLabel = !stt
     ? t('listen.noStt')
     : phase === 'listening'
       ? t('listen.listening')
@@ -568,17 +551,9 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
           <Icon name="mic" size={22} /> {t('mode.listen.title')}
         </h2>
         <div className="listen__topBtns">
-          {useAgent ? (
-            callState !== 'off' && (
-              <button type="button" className="btn btn--small btn--onDark" onClick={endCall}>
-                {t('listen.endCall')}
-              </button>
-            )
-          ) : (
-            <button type="button" className="btn btn--small btn--onDark" aria-pressed={handsFree} onClick={() => setHandsFree((v) => !v)}>
-              {handsFree ? t('listen.handsFreeOn') : t('listen.handsFreeOff')}
-            </button>
-          )}
+          <button type="button" className="btn btn--small btn--onDark" aria-pressed={handsFree} onClick={() => setHandsFree((v) => !v)}>
+            {handsFree ? t('listen.handsFreeOn') : t('listen.handsFreeOff')}
+          </button>
           <button type="button" className="btn btn--small btn--onDark" onClick={onHome}>
             {t('tabs.home')}
           </button>
@@ -586,23 +561,22 @@ export default function ListenScreen({ nav, planner, sensors, lang, onRoute, onD
       </header>
       {useAgent && (
         <p className="listen__agentchip">
-          <span className={`listen__agentdot${callOn ? ' listen__agentdot--on' : ''}`} aria-hidden="true" /> {t('listen.voiceAgent')}
+          <span className="listen__agentdot listen__agentdot--on" aria-hidden="true" /> {t('listen.voiceAgent', { model: shortModel(voiceCfg?.model) })}
         </p>
       )}
-      {!useAgent && (!stt || !tts) && (
+      {modelDown && (
+        <p className="listen__agentchip">
+          <span className="listen__agentdot" aria-hidden="true" /> {t('listen.modelDown')}
+        </p>
+      )}
+      {(!stt || !tts) && (
         <p className="listen__nosupport" role="alert">
           {!stt && !tts ? t('listen.noSpeech') : !stt ? t('listen.noSttLong') : t('listen.noTtsLong')}
         </p>
       )}
 
       <div className="listen__stage">
-        <button
-          type="button"
-          className={`listen__orb${phase === 'listening' || (callOn && !assistantSpeaking) ? ' listen__orb--on' : ''}${busy || callState === 'connecting' || assistantSpeaking ? ' listen__orb--busy' : ''}`}
-          aria-pressed={phase === 'listening' || callOn}
-          onClick={toggleListening}
-          disabled={!useAgent && !stt}
-        >
+        <button type="button" className={`listen__orb${phase === 'listening' ? ' listen__orb--on' : ''}${busy ? ' listen__orb--busy' : ''}`} aria-pressed={phase === 'listening'} onClick={toggleListening} disabled={!stt}>
           <span className="listen__ring" aria-hidden="true" />
           <span className="listen__ring listen__ring--2" aria-hidden="true" />
           <Icon name="mic" size={56} />

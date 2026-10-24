@@ -1,14 +1,17 @@
-"""Vapi tool webhook on a private copy of the toy DB: config off without a key, find_place,
-report_barrier (creates a pending report at the traveller's location), navigation acknowledgements,
-non tool-call messages ignored."""
+"""Listen conversation endpoint with a fake model: config on/off, tool loop (find_place runs on the
+server, start_navigation comes back as an action), report_barrier creates a pending report, model
+failure -> 502, no key -> 503."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import urllib.error
 
 import pytest
 from fastapi.testclient import TestClient
 
+from api.services import voice_llm
 from api.services.reports import REPORT_DIR
 from common import config
 
@@ -41,57 +44,104 @@ def client(api_db):
         r.unlink(missing_ok=True)
 
 
-def _tool_call(name: str, args: dict, variables: dict | None = None, call_id: str = "tc1") -> dict:
-    return {
-        "message": {
-            "type": "tool-calls",
-            "toolCallList": [{"id": call_id, "type": "function", "function": {"name": name, "arguments": args}}],
-            "call": {"assistantOverrides": {"variableValues": variables or {}}},
-        }
-    }
+class FakeModel:
+    """Scripted assistant messages, returned in order; records the request bodies."""
+
+    def __init__(self, scripts):
+        self.scripts = list(scripts)
+        self.bodies = []
+
+    def __call__(self, url, key, body, timeout):
+        self.bodies.append(body)
+        if not self.scripts:
+            raise AssertionError("model called more times than scripted")
+        nxt = self.scripts.pop(0)
+        if isinstance(nxt, Exception):
+            raise nxt
+        return {"choices": [{"message": nxt}]}
+
+
+def tool_call(name, args, cid="c1"):
+    return {"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+@pytest.fixture
+def key(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
 
 
 def test_config_reflects_env(client, monkeypatch):
-    monkeypatch.delenv("VAPI_PUBLIC_KEY", raising=False)
-    r = client.get("/voice/config")
-    assert r.status_code == 200 and r.json()["enabled"] is False and r.json()["public_key"] is None
-    monkeypatch.setenv("VAPI_PUBLIC_KEY", "pk-test")
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     r = client.get("/voice/config").json()
-    assert r["enabled"] is True and r["public_key"] == "pk-test" and "find_place" in r["tools"]
+    assert r["enabled"] is False and r["provider"] is None
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    r = client.get("/voice/config").json()
+    assert r["enabled"] is True and r["provider"] == "nvidia" and "find_place" in r["tools"] and r["model"]
 
 
-def test_find_place_returns_top_match(client):
+def test_chat_without_key_is_503(client, monkeypatch):
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    assert client.post("/voice/chat", json={"messages": [{"role": "user", "content": "hi"}]}).status_code == 503
+
+
+def test_find_place_then_navigate(client, key, monkeypatch):
     anchors = client.get("/layers/anchors").json()["features"]
     name = anchors[0]["properties"]["name_en"]
-    r = client.post("/voice/tools", json=_tool_call("find_place", {"query": name.split()[0]}))
-    assert r.status_code == 200
-    res = r.json()["results"][0]
-    assert res["toolCallId"] == "tc1"
-    assert "Top match" in res["result"] and "lat" in res["result"]
+    fake = FakeModel([
+        {"role": "assistant", "content": None, "tool_calls": [tool_call("find_place", {"query": name.split()[0]})]},
+        {"role": "assistant", "content": f"Found {name}. Shall I start?"},
+    ])
+    monkeypatch.setattr(voice_llm, "_post", fake)
+    r = client.post("/voice/chat", json={"messages": [{"role": "user", "content": f"take me to {name}"}], "lang": "en"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["reply"].startswith("Found") and d["actions"] == []
+    assert "Top match" in d["memory"] and "lat" in d["memory"]
+    assert d["tool_log"][0]["name"] == "find_place" and "Top match" in d["tool_log"][0]["result"]
+    # the tool result went back to the model as a tool message
+    roles = [m["role"] for m in fake.bodies[1]["messages"]]
+    assert roles[-1] == "tool" and roles[-2] == "assistant"
+    # second utterance: the model starts navigation -> action for the app, default sentence when it says nothing
+    fake2 = FakeModel([
+        {"role": "assistant", "content": None, "tool_calls": [tool_call("start_navigation", {"lat": 1.0, "lon": 2.0, "name": name})]},
+        {"role": "assistant", "content": ""},
+    ])
+    monkeypatch.setattr(voice_llm, "_post", fake2)
+    d = client.post("/voice/chat", json={"messages": [{"role": "user", "content": "yes"}], "lang": "en"}).json()
+    assert d["actions"] == [{"name": "start_navigation", "args": {"lat": 1.0, "lon": 2.0, "name": name}}]
+    assert name in d["reply"]
 
 
-def test_find_place_unknown(client):
-    res = client.post("/voice/tools", json=_tool_call("find_place", {"query": "zzqxv"})).json()["results"][0]
-    assert "No place" in res["result"]
-
-
-def test_report_barrier_creates_pending_report(client):
+def test_report_barrier_creates_pending_report(client, key, monkeypatch):
     z = config.zone()["center"]
     u = client.post("/users", json={"display_name": "meera", "profile": "blind_low_vision", "language": "en"}).json()
-    body = _tool_call("report_barrier", {"class_id": "parked_vehicle", "note": "scooter across the path"},
-                      variables={"lat": z["lat"], "lon": z["lon"], "user_id": u["id"], "lang": "en"})
-    res = client.post("/voice/tools", json=body).json()["results"][0]
-    assert "sent" in res["result"] and "parked_vehicle" in res["result"]
+    fake = FakeModel([
+        {"role": "assistant", "content": None, "tool_calls": [tool_call("report_barrier", {"class_id": "parked_vehicle", "note": "scooter"})]},
+        {"role": "assistant", "content": "Reported a parked vehicle. Thank you."},
+    ])
+    monkeypatch.setattr(voice_llm, "_post", fake)
+    body = {"messages": [{"role": "user", "content": "a scooter blocks the path"}], "lang": "en", "user_id": u["id"],
+            "location": {"lat": z["lat"], "lon": z["lon"]}}
+    d = client.post("/voice/chat", json=body).json()
+    assert "sent" in d["tool_log"][0]["result"]
     listed = [r for r in client.get("/reports?status=pending&limit=50").json()["results"] if r["class_id"] == "parked_vehicle"]
     assert len(listed) == 1 and listed[0]["photo_url"] is None
 
 
-def test_report_without_location_fails_gracefully(client):
-    res = client.post("/voice/tools", json=_tool_call("report_barrier", {"class_id": "open_drain"})).json()["results"][0]
-    assert "location is unknown" in res["result"]
+def test_report_without_location_tells_the_model(client, key, monkeypatch):
+    fake = FakeModel([
+        {"role": "assistant", "content": None, "tool_calls": [tool_call("report_barrier", {"class_id": "open_drain"})]},
+        {"role": "assistant", "content": "I need your location first."},
+    ])
+    monkeypatch.setattr(voice_llm, "_post", fake)
+    d = client.post("/voice/chat", json={"messages": [{"role": "user", "content": "report a drain"}]}).json()
+    assert "location is unknown" in d["tool_log"][0]["result"]
 
 
-def test_navigation_tools_ack_and_other_messages_ignored(client):
-    res = client.post("/voice/tools", json=_tool_call("start_navigation", {"lat": 1, "lon": 2, "name": "x"})).json()["results"][0]
-    assert res["result"] == "ok"
-    assert client.post("/voice/tools", json={"message": {"type": "status-update"}}).json() == {"results": []}
+def test_model_failure_is_502_and_falls_through_models(client, key, monkeypatch):
+    err = urllib.error.HTTPError("u", 404, "nf", {}, None)
+    n = len(voice_llm.vcfg()["models"])
+    fake = FakeModel([err] * n)
+    monkeypatch.setattr(voice_llm, "_post", fake)
+    r = client.post("/voice/chat", json={"messages": [{"role": "user", "content": "hello"}]})
+    assert r.status_code == 502 and len(fake.bodies) == n

@@ -1,0 +1,23 @@
+# Listen-mode conversation brain: an OpenAI-compatible chat endpoint (NVIDIA NIM by default).
+# Speech-to-text and text-to-speech stay on the phone; only text goes to the model.
+# The key is read from the environment (NVIDIA_API_KEY), never from this file.
+provider: nvidia
+base_url: https://integrate.api.nvidia.com/v1
+# Checked on 2026-10-25 with this account: these answer tool calls. First one that works is used.
+models:
+  - nvidia/nemotron-3.5-lightning-30b-a3b
+  - z-ai/glm-5.3-flash
+  - deepseek-ai/deepseek-v4.1-flash
+  - openai/gpt-oss-20b
+temperature: 0.2
+max_tokens: 220
+timeout_s: 25
+# tool call -> result -> model, at most this many rounds per user utterance
+max_tool_rounds: 3
+# how many past user/assistant turns are sent with each request
+history_turns: 12
+# Per-model request extras (OpenAI-compatible servers pass unknown fields through to the template).
+model_extra:
+  nvidia/nemotron-3.5-lightning-30b-a3b:
+    chat_template_kwargs:
+      enable_thinking: false

@@ -1063,53 +1063,41 @@ that opens the right experience per disability, (5) a proper demo mode with real
 32. **CSR partners**: replace the placeholder catalogue in `web/src/rewards.ts` + `rewards.partners.*`
     strings once a real partner agrees; decide whether points move to the server (`User` table).
 
-## Live voice agent for blind travellers — Vapi (2026-10-25)
+## Listen conversation on NVIDIA (replaces the Vapi attempt, 2026-10-25)
 
-The user supplied a Vapi key ("the app is not interacting with blind people"). It is a *public*
-key (Vapi's `/assistant` endpoint answers 401 to it), so it is used where public keys belong: in
-the phone's web SDK. It is never committed; the API reads it from `VAPI_PUBLIC_KEY` and hands it to
-the app through `GET /voice/config`, so changing the key needs no rebuild.
+Vapi was tried first: both keys the user had were public keys with transient assistants
+disabled (`403 Key doesn't allow transient assistant`) and no private key was available, so the
+user asked to remove Vapi and use an NVIDIA API key instead. Vapi code, SDK and script are gone.
 
-### What was built
-- `api/routers/voice.py`: `GET /voice/config` (enabled + public key + tool names) and
-  `POST /voice/tools`, the webhook Vapi calls for the assistant's tools: `find_place` (→ `/search`
-  logic, returns the top match with lat/lon), `report_barrier` (creates a photo-less report at the
-  traveller's location, severity 3; falls back to a "Voice traveller" user), and acknowledgements
-  for `start_navigation` / `stop_navigation` / `repeat_step` / `where_am_i`, which the app acts on
-  itself. Always answers 200 with `results[]` as Vapi requires. 6 tests in `tests/test_voice_api.py`.
-- `web/src/vapi.ts`: builds a transient assistant (GPT-4o-mini, Deepgram nova-2 `en`/`hi`, Azure
-  voices en-IN Neerja / hi-IN Swara, tools pointing at `<API_URL>/voice/tools`, a system prompt that
-  forbids inventing places or directions), opens the call with `@vapi-ai/web`, and exposes `say`
-  (assistant voices navigation steps), `addContext` (system messages with the traveller's location
-  every 20 s and the current step) and tool-call events.
-- Listen screen: when `/voice/config` is enabled, the orb opens a live call instead of the on-device
-  recogniser ("Live voice agent" chip, "Tap to talk to SAMAAN", "SAMAAN is speaking…", End call).
-  The blind onboarding path starts the call automatically. Tool calls from the assistant start,
-  stop and repeat navigation in the app; navigation announcements are spoken by the assistant's
-  voice (speechSynthesis muted during a call). If the call fails, the screen falls back to
-  on-device speech with the error shown.
+### What runs now
+- Speech recognition and speech output stay on the phone (Apple Speech / speechSynthesis, the
+  hands-free loop from before). Only the recognised text goes to the server.
+- `POST /voice/chat` (`api/routers/voice.py`, `api/services/voice_llm.py`): an OpenAI-compatible
+  chat call to NVIDIA NIM (`config/voice.yaml`: base URL, ordered model list, temperature, tool
+  rounds; key in `NVIDIA_API_KEY`). Default model `nvidia/nemotron-3.5-lightning-30b-a3b`;
+  fallbacks `z-ai/glm-5.3-flash`, `deepseek-ai/deepseek-v4.1-flash`, `openai/gpt-oss-20b` (all
+  verified to answer tool calls with this account on 2026-10-25; Llama 3.3 70B is end-of-life,
+  Nemotron 70B / Super 120B are not enabled for the account).
+- Tools: `find_place` and `report_barrier` run on the server; `start_navigation`,
+  `stop_navigation`, `repeat_step` come back as `actions` for the app. The system prompt forbids
+  inventing places or directions; every request carries the traveller's location and the current
+  step as context so "where am I" is answered from facts.
+- App: when `/voice/config` is enabled, every recognised sentence goes to the model
+  (chip "SAMAAN assistant · Nemotron 3.5 Lightning on NVIDIA"); demo / home / repeat stay local
+  shortcuts; if the model call fails the screen says "Assistant offline" and the rule-based
+  dialogue takes over for that sentence and the rest of the visit.
+- 6 tests with a scripted fake model (`tests/test_voice_api.py`).
 
 ### Run
 ```
-VAPI_PUBLIC_KEY=<public key> make api-lan      # plus the cloudflared tunnel
+NVIDIA_API_KEY=<key> make api-lan
 ```
-The webhook must be reachable from Vapi's servers: through the tunnel URL baked into the app
-(`make ios-sync API_URL=<tunnel>`); on a LAN-only API the tools fail and the assistant says so.
-
-### Decisions taken alone
-- No private key is needed or stored; the assistant is transient (no dashboard setup).
-- Webhook is unauthenticated for the hackathon (it can only search and file pending reports).
-- Reports filed by voice use the traveller's user id when the app passed one, else the shared
-  "Voice traveller" user (trust 0.3, pending until validated).
 
 ### Human tasks
-33. **Try the live call on the iPhone** (5 min): Listen → tap the orb → say "library" → "yes" →
-    walk / simulate → "where am I" → "report" → "parked scooter" → "goodbye". Check the API log for
-    `POST /voice/tools`. If the first call fails with a microphone error, allow the mic in
-    iOS Settings → SAMAAN.
-34. **Vapi dashboard**: confirm the public key's allowed origins (if restricted, add
-    `capacitor://localhost` and `http://localhost`) and watch the call logs during the demo; add
-    credit if the free tier runs out.
+33. **Try Listen on the iPhone** (5 min): orb → "take me to the library" → "yes" → "where am I" →
+    "a scooter is blocking the path" → "stop". The API log shows `POST /voice/chat` per sentence.
+34. **If a sentence comes back slow (> 4 s)**, move `z-ai/glm-5.3-flash` to the top of
+    `config/voice.yaml` and restart the API; no app rebuild needed.
 
 ## Logo, login on every launch, photo import (2026-10-25)
 - The user's logo (sun, three travellers, "Not disabled. Just differently abled.") is now the iOS

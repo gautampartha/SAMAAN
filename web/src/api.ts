@@ -972,17 +972,44 @@ export const demoApi = {
   },
 };
 
-// ---------- Voice agent (GET /voice/config) ----------
+// ---------- Listen conversation (GET /voice/config, POST /voice/chat) ----------
 
 export interface VoiceConfig {
   enabled: boolean;
-  provider: 'vapi' | null;
-  public_key: string | null;
-  /** Pre-created assistant (set when the public key forbids transient assistants). */
-  assistant_id?: string | null;
+  provider: 'nvidia' | null;
+  model: string | null;
   tools: string[];
+}
+
+export interface VoiceTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface VoiceChatInput {
+  messages: VoiceTurn[];
+  lang: Lang;
+  user_id?: number | string | null;
+  location?: { lat: number; lon: number; accuracy_m?: number | null } | null;
+  nav_context?: string | null;
+  navigating: boolean;
+}
+
+export interface VoiceAction {
+  name: 'start_navigation' | 'stop_navigation' | 'repeat_step' | (string & {});
+  args: Record<string, unknown>;
+}
+
+export interface VoiceChatResponse {
+  reply: string;
+  /** Reply plus tool facts; store this as the assistant turn so the next request keeps the coordinates. */
+  memory?: string;
+  actions: VoiceAction[];
+  tool_log: { name: string; args: Record<string, unknown>; result: string }[];
+  model: string | null;
 }
 
 export const voiceApi = {
   config: (signal?: AbortSignal) => getJson<VoiceConfig>('/voice/config', signal),
+  chat: (input: VoiceChatInput, signal?: AbortSignal) => postJson<VoiceChatResponse>('/voice/chat', input, signal),
 };
