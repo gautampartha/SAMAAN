@@ -805,13 +805,39 @@
   "explore": {
     "title": "Explore mode",
     "noCamera": "No camera here, so the map is shown instead.",
-    "simplify": "Simplify",
     "arrowSr": "Arrow points {{deg}} degrees from straight ahead.",
     "heading": {
       "compass": "Arrow uses the compass.",
       "travel": "Arrow uses your direction of travel.",
       "route": "Arrow is relative to the route direction (no compass)."
-    }
+    },
+    "destination": "Destination",
+    "activeRoute": "Active route",
+    "back": "Back",
+    "live": "Live",
+    "demo": "Demo",
+    "simulated": "Simulated",
+    "noGps": "No GPS",
+    "view": {
+      "label": "View",
+      "camera": "Camera",
+      "map": "Map",
+      "arrow": "Arrow only",
+      "steps": "Steps"
+    },
+    "says": "SAMAAN says",
+    "arrived": "Arrived",
+    "finish": "Finish",
+    "bearing": "{{deg}}° bearing",
+    "bearingUnknown": "Bearing unknown",
+    "distanceLabel": "Distance to the next step",
+    "start": "Start",
+    "arrive": "Arrive",
+    "straight": "Continue straight · {{dist}}",
+    "turn": "Turn {{deg}}° {{dir}} · {{dist}}",
+    "left": "left",
+    "right": "right",
+    "stepsList": "Route steps"
   },
   "listen": {
     "noStt": "Voice input not available",

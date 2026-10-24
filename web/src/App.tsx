@@ -683,6 +683,7 @@ export default function App() {
                 onEnd={endNavigation}
                 onReport={reportBarrier}
                 headingRef={screenHeadingRef}
+                destination={result?.label_en ? (lang === 'hi' ? result.label_hi || result.label_en : result.label_en) : planner.state.destination?.label}
               />
             )}
 
