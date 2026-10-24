@@ -34,3 +34,6 @@ data/processed/smoke*/
 data/labels/smoke*/
 data/processed/active_zone.json
 data/raw/zone_*.osm
+
+# Teammates' raw campus photos (imported via make import-photos)
+Photos/
