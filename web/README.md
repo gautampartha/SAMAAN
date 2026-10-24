@@ -1,4 +1,4 @@
-# SAMAAN web (P0 scaffold + P2 capture + P3 route planner + P7 citizen loop + P8 reach gap)
+# SAMAAN web (P0 scaffold + P2 capture + P3 route planner + P7 citizen loop + P8 reach gap + P9 ride mode)
 
 Vite + React 18 + TypeScript single-page PWA that renders the SAMAAN API's
 GeoJSON layers on a MapLibre GL JS map, in English and Hindi, with
@@ -24,7 +24,7 @@ empty map.
 
 | Variable       | Default                  | Purpose                                                        |
 | -------------- | ------------------------ | -------------------------------------------------------------- |
-| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route`, `GET /search`, the citizen loop (`/users`, `/reports`, `/reports/{id}/votes`, `/missions`), the reach gap (`GET /reach/anchors`, `GET /reach`) (barrier `photo_urls` and report `photo_url` are relative to it) |
+| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route`, `GET /search`, the citizen loop (`/users`, `/reports`, `/reports/{id}/votes`, `/missions`), the reach gap (`GET /reach/anchors`, `GET /reach`), ride mode (`/rides`, `/rides/{id}/samples`, `/rides/{id}/end`, `/rides/replay-demo`, `GET /layers/wheels`) (barrier `photo_urls` and report `photo_url` are relative to it) |
 
 ## Pages
 
@@ -38,9 +38,13 @@ The app is a single page with a hash router (`src/router.ts`, no library):
   elderly person / pram) gets from a metro station in N minutes, and which
   five fixes close the gap. Uses the main map (it stays mounted) with a side
   panel / bottom sheet like the planner.
+- `#/ride` - **Ride mode** ("wheels as sensors"): a phone mounted on a
+  wheelchair records the accelerometer and GPS; the server turns smooth
+  traversals into footpaths "verified by wheels" and jolts into suspected
+  barriers.
 
-The header carries a Map / Capture / Validate / Missions / Reach Gap
-navigation with `aria-current="page"` (five links wrap to 3 + 2 on phones).
+The header carries a Map / Capture / Validate / Missions / Reach Gap / Ride
+navigation with `aria-current="page"` (six links wrap to 3 + 3 on phones).
 
 ## Route planner and three-route comparison (`#/`)
 
@@ -301,6 +305,121 @@ list changes).
    puts focus back on the **Reach Gap** nav link; the result is kept for the
    next visit.
 
+## Ride mode (`#/ride`, P9 "wheels as sensors")
+
+A wheelchair user mounts the phone and rides; nothing to photograph. The
+engine lives in `src/ride.ts` (a module singleton like the upload queue, so a
+ride keeps recording while another page is shown and React StrictMode's
+double-run effects never start or stop anything, only taps do); the page is
+`src/components/RidePage.tsx`.
+
+**Mounting the phone**: fix it firmly to the frame or an armrest, screen facing
+up, with a case or strap so it cannot rattle (a loose phone records its own
+rattling as jolts). Any orientation works: the engine picks the axis with the
+largest mean magnitude (the one carrying gravity) as "vertical".
+
+**HTTPS**: `devicemotion`, high-accuracy geolocation and the Wake Lock API only
+exist in a secure context (`https://` or `localhost`); on plain `http://` the
+page says "This device has no motion sensors or the page is not served over
+HTTPS". See the capture page's HTTPS section for a tunnel / mkcert setup. iOS
+additionally needs `DeviceMotionEvent.requestPermission()` from a user
+gesture, so **Start ride** asks for it inside the tap (a refusal shows the
+"permission denied" alert).
+
+**Start ride** (64 px): asks for motion permission (iOS), then, if there is no
+stored user yet, shows the "Who are you?" dialog and continues once it closes.
+Sensors start first (`t = 0` is exactly `started_at`, nothing is lost while
+the request is in flight), then `POST /rides {user_id, started_at, device}`
+creates the ride. `devicemotion` is recorded at the event rate (about 50-60 Hz,
+`accelerationIncludingGravity`, device frame, `t` from `performance.now()`
+relative to the start, 3 decimals) and `watchPosition` (~1 Hz, high accuracy)
+merges GPS fixes into the same stream: a sample with `lat`/`lon`
+(`gps_accuracy_m`, `speed_m_s` when known) is a fix, the others carry only
+acceleration. If no motion event arrives within 4 s the ride is abandoned
+locally with the "no motion sensors" alert (desktop browsers define the event
+but never fire it).
+
+**Wake Lock**: `navigator.wakeLock.request('screen')` keeps the screen on; the
+lock is re-acquired on `visibilitychange` when the tab comes back and released
+on Stop. The status line says whether the screen is kept awake or the browser
+cannot do it.
+
+**Batches**: every 10 s the buffered samples (≈500 accelerometer samples +
+≈10 fixes) become one batch, written to IndexedDB first (`samaan-capture` v2,
+store `rideBatches`, key `${rideId}:${seq}`; the v1 → v2 upgrade only creates
+the missing store) and *then* posted to `POST /rides/{id}/samples`; the row is
+deleted once the server accepted it. A failure backs off (2 s, 4 s … 30 s) and
+retries, the queue pauses while `navigator.onLine` is false and resumes on
+`online`; 400/404 (ride ended / unknown) drops the batch and shows an alert.
+Batches left from a previous page load are re-sent on the next visit. The
+live counters show duration, samples, batches sent / pending, speed (km/h from
+the last fix), the vibration RMS and "last jolt N s ago".
+
+**Live RMS / jolt hint** (client-side only; the server decides what becomes
+verified or suspected): every 250 ms over the last second, the axis with the
+largest mean magnitude is taken as vertical, its 1 s rolling mean is
+subtracted (a cheap high-pass), the RMS of that is the vibration level and its
+peak above 6 m/s² marks "last jolt" (the counter tile gets a thicker orange
+border and a "!" glyph for 3 s).
+
+**Stop ride** (64 px, red border): sensors off, the remaining samples become a
+last batch, the queue is flushed (while flushing: **Retry now** and **End
+without the pending batches**), then `POST /rides/{id}/end {ended_at}` returns
+the `RideSummary`. A 400 on `end` (already ended, e.g. after a lost response)
+falls back to `GET /rides/{id}`; any other failure keeps the ride id and
+offers **Retry ending the ride**. The summary (focus moves to its heading)
+says "You verified N footpath segments by wheels · M suspected barriers
+found", shows duration, samples, windows matched / total, segments traversed,
+a collapsible roughness list (top 8 segments by `roughness_index`), the
+synthetic badge when `synthetic` is true, **Show on map** and **New ride**.
+
+**Show on map** turns the **Wheels** layer on, navigates to the map, runs
+`refreshLayers()` (footpaths/barriers changed: verified states, suspected
+barriers), reloads `GET /layers/wheels` and fits the map to the LineStrings
+whose `edge_id` is in `verified_edge_ids` (or to every wheels line when none
+matches).
+
+**Replay demo ride** (secondary button under "No wheelchair in the room?",
+synthetic badge): `POST /rides/replay-demo {user_id}` makes the server generate
+and process a synthetic ride along Riya's route; the same summary view and
+Show on map follow, so the pitch can show segments turning "verified by
+wheels" without a wheelchair.
+
+**Map** (`MapView.tsx`, layer key `wheels`, off by default): verified edges are
+a double line like a rail (9 px green casing with a 3 px white core, a pattern
+and not only a colour), other traversed edges a thin orange-brown line; both
+open a popup with the roughness index (m/s²), traversals and last traversed
+time. Jolt points are hollow orange circles with a "!" glyph; their popup
+shows the class, peak m/s², "Suspected — needs a photo" and a
+**Photograph this** button that opens the report sheet with `kind=barrier`,
+the class pre-selected and the barrier position fixed to the jolt (the sheet
+says so; the phone's own fix is still sent as `device_lat/lon`, so the API's
+50 m check applies). The legend has a "Wheels as sensors" section describing
+the three symbols in words. `/layers/footpaths` may now carry `observed_by`
+(`image` | `wheel` | `report` | null); it is typed in `api.ts` but there is no
+footpath popup yet to show it. `/layers/barriers` may include status
+`suspected`.
+
+**Missions page**: a second list, **Photograph these jolts**, built from the
+Point features of `/layers/wheels` sorted by peak: name, class, peak m/s²,
+synthetic badge, **Show on map** (opens the map with the Wheels layer on, flies
+to the jolt and opens its popup, where **Photograph this** is one tap away).
+
+### Keyboard-only flow
+
+1. Tab to **Ride** in the page navigation, Enter: the page opens.
+2. Tab to **Start ride**, Enter (on iOS the permission prompt appears; without
+   motion sensors the alert explains why). If no user is stored the "Who are
+   you?" dialog takes focus; Enter on **Continue** carries on with the ride.
+3. While recording the status line (`role="status"`) and an sr-only live
+   region (one summary every 5 s, plus "Jolt felt.") report progress; Tab
+   reaches **Stop ride**, Enter stops and flushes.
+4. Focus moves to the "Ride summary" heading; Tab to **Show on map** (Enter
+   opens the map with the Wheels layer on) or **New ride** (focus returns to
+   **Start ride**).
+5. **Replay demo ride** is reachable the same way from the start screen and
+   ends on the same summary.
+
 ## Capture page (`#/capture`)
 
 For a phone held upright while walking along a footpath, photographing both
@@ -389,12 +508,14 @@ singleton, so switching back to the map does not stop uploads.
 - `src/components/ReachPanel.tsx` - Reach Gap controls, headline, to-do list with simulate-fix checkboxes.
 - `src/components/reachStyles.tsx` - blob / anchor / fix-pin styles and legend swatches shared by map and legend.
 - `src/reach.ts` - `useReachGap(active)` state hook (anchors, parameters, `/reach` result, simulated fix ids).
+- `src/components/RidePage.tsx` - Ride mode: Start/Stop, live counters, summary, replay demo.
+- `src/ride.ts` - `rideEngine` singleton + `useRide()`: devicemotion/GPS recording, 10 s batches in IndexedDB, backoff, Wake Lock, RMS/jolt hint, end/summary.
 - `src/user.ts` - stored citizen identity (`samaan.user`), `useUser()`, `createUser()`, `refreshUser()`.
 - `src/camera.ts` - `useCamera()` (rear camera preview + JPEG frame grab) shared by capture and report.
 - `src/sensors.ts` - `useSensors()` (GPS, compass heading, pitch), haversine.
 - `src/uploadQueue.ts` - persistent sequential upload queue with backoff.
-- `src/idb.ts` - minimal IndexedDB wrapper (open, put, getAll, remove).
-- `src/router.ts` - `useHashRoute()`, `navigate()`, `hrefFor()` for the five pages.
+- `src/idb.ts` - minimal IndexedDB wrapper (open, put, getAll, remove); stores `pending` (photos) and `rideBatches` (ride samples).
+- `src/router.ts` - `useHashRoute()`, `navigate()`, `hrefFor()` for the six pages.
 - `src/styles.css` - mobile-first styles, light/dark/high-contrast tokens.
 - `public/manifest.webmanifest`, `public/icon.svg` - PWA manifest (no service
   worker yet).
@@ -468,6 +589,14 @@ the i18n files also carry the eight barrier class names for labels.
       headline tiles repeat those patterns; legend swatches use high-contrast
       tokens; simulate checkboxes are native inputs in 48 px rows with labels
       that say what they do; grow animation disabled under reduced motion.
+
+- [x] Ride mode: Start/Stop are 64 px with a glyph plus text; the jolt tile adds
+      a thicker border and a "!" glyph (not colour alone); counters that change
+      4×/s are plain text while an sr-only live region summarises every 5 s;
+      errors in `role="alert"`, phases in `role="status"`; the summary heading
+      takes focus; wheels symbols differ by pattern (rail vs. thin line vs.
+      hollow circle with "!") and the legend describes them in words; the
+      synthetic badge marks the demo ride.
 
 Not yet done (later phases): service worker/offline, keyboard navigation of
 map features themselves (use the list), dragging the report marker on a mini

@@ -1,0 +1,6 @@
+ride_id,t_start,t_end,label
+# Seconds since the ride start (see the Ride page timer). One row per known stretch; labels: smooth | broken | kerb
+# Delete these comment lines and save as ride_calibration.csv.
+12,5,45,smooth
+12,60,90,broken
+12,95,99,kerb

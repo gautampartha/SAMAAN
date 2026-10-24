@@ -2316,3 +2316,169 @@ body {
   border: 1px solid var(--border);
   font-weight: 600;
 }
+
+/* ====================================================================
+   P9 wheels as sensors: Ride page, jolt list, wheels legend
+   ==================================================================== */
+
+.ride {
+  position: relative;
+}
+.ride__status {
+  min-height: 1.3em;
+}
+.ride__inline {
+  margin-left: 8px;
+}
+.ride__live,
+.ride__summary {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.ride__summaryTitle {
+  margin: 0;
+  font-size: 1.15rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ride__summaryTitle:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+/* Six live counters: two columns on phones, three from 480 px, six on wide screens. */
+.ride__counters {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (min-width: 480px) {
+  .ride__counters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 900px) {
+  .ride__counters {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+.ride__counters > div {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.ride__counters dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.ride__counters dd {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ride__counters dd.ride__small {
+  font-size: 1rem;
+}
+/* A fresh jolt: thicker orange border plus the "!" glyph in the value (not colour alone). */
+.ride__jolt--fresh {
+  border-width: 3px;
+  border-color: #e65100;
+}
+:root[data-theme="high-contrast"] .ride__jolt--fresh {
+  border-color: var(--fg);
+}
+.ride__meta {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.ride__rough {
+  margin: 0;
+  padding: 4px 0 12px 20px;
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+.ride__bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 -12px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border-top: 2px solid var(--border);
+}
+.ride__bar .btn {
+  flex: 1 1 auto;
+  white-space: normal;
+  line-height: 1.2;
+}
+.ride__start,
+.ride__big {
+  min-height: 64px;
+  font-size: 1.2rem;
+  width: 100%;
+}
+.ride__stop {
+  border-width: 3px;
+  border-color: #c62828;
+}
+:root[data-theme="high-contrast"] .ride__stop {
+  border-color: var(--fg);
+}
+.ride__demo {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+}
+.ride__demo .panel__subtitle {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ride__demoBtn {
+  white-space: normal;
+  min-height: 56px;
+}
+
+/* Jolt list on the Missions page */
+.jolts {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 2px solid var(--border);
+}
+.jolts .panel__hint,
+.jolts .place__status {
+  margin: 0;
+}
+.mission--jolt {
+  border-color: #e65100;
+}
+:root[data-theme="high-contrast"] .mission--jolt {
+  border-color: var(--fg);
+}
+.rcard__index--jolt {
+  color: #e65100;
+  border-width: 3px;
+}
+:root[data-theme="high-contrast"] .rcard__index--jolt {
+  color: var(--fg);
+}

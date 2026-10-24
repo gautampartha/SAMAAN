@@ -9,8 +9,11 @@ import {
   type MissionFeature,
   type ReachFix,
   type ReportItem,
+  type ReportPrefill,
   type ReportTarget,
+  type RideSummary,
   type RouteBarrier,
+  type WheelsJoltFeature,
   type Zone,
 } from './api';
 import { toLang, type Lang } from './i18n';
@@ -25,7 +28,8 @@ import ReportSheet, { type ReportMode } from './components/ReportSheet';
 import ValidatePage from './components/ValidatePage';
 import MissionsPage from './components/MissionsPage';
 import ReachPanel from './components/ReachPanel';
-import type { ReachFocus } from './components/MapView';
+import RidePage from './components/RidePage';
+import type { ReachFocus, WheelsFocus } from './components/MapView';
 import { navigate, useHashRoute, type Route } from './router';
 import { formatCoords, useRoutePlanner, type PointRole } from './routePlanner';
 import { useReachGap } from './reach';
@@ -80,6 +84,7 @@ const DEFAULT_VISIBLE: Record<LayerKey, boolean> = {
   anchors: true,
   demo: true,
   images: false,
+  wheels: false,
 };
 
 export default function App() {
@@ -147,7 +152,7 @@ export default function App() {
     const ac = new AbortController();
     const s = ac.signal;
     (async () => {
-      const [h, z, fp, ba, cov, an, de, im] = await Promise.allSettled([
+      const [h, z, fp, ba, cov, an, de, im, wh] = await Promise.allSettled([
         api.health(s),
         api.zone(s),
         api.footpaths(s),
@@ -156,6 +161,7 @@ export default function App() {
         api.anchors(s),
         api.demo(s),
         api.images(s),
+        api.wheels(s),
       ]);
       if (s.aborted) return;
 
@@ -175,6 +181,7 @@ export default function App() {
       pick('anchors', an);
       pick('demo', de);
       pick('images', im);
+      pick('wheels', wh);
 
       setData(next);
       setFailed(failedKeys);
@@ -190,17 +197,26 @@ export default function App() {
     return () => ac.abort();
   }, []);
 
-  // ---- Live update plumbing: reload footpaths + barriers (+ coverage when shown) after the server changed them. ----
+  // ---- Live update plumbing: reload footpaths + barriers (+ coverage / wheels when shown) after the server changed them. ----
   const coverageVisibleRef = useRef(visible.coverage);
   coverageVisibleRef.current = visible.coverage;
+  const wheelsVisibleRef = useRef(visible.wheels);
+  wheelsVisibleRef.current = visible.wheels;
   const refreshLayers = useCallback(async () => {
     const withCoverage = coverageVisibleRef.current;
-    const [fp, ba, cov] = await Promise.allSettled([api.footpaths(), api.barriers(), withCoverage ? api.coverage() : Promise.resolve(undefined)]);
+    const withWheels = wheelsVisibleRef.current;
+    const [fp, ba, cov, wh] = await Promise.allSettled([
+      api.footpaths(),
+      api.barriers(),
+      withCoverage ? api.coverage() : Promise.resolve(undefined),
+      withWheels ? api.wheels() : Promise.resolve(undefined),
+    ]);
     setData((cur) => {
       const next: LayerData = { ...cur };
       if (fp.status === 'fulfilled') next.footpaths = fp.value;
       if (ba.status === 'fulfilled') next.barriers = ba.value;
       if (cov.status === 'fulfilled' && cov.value) next.coverage = cov.value;
+      if (wh.status === 'fulfilled' && wh.value) next.wheels = wh.value;
       return next;
     });
     // Reports that became barriers (or were rejected) are no longer pending.
@@ -350,6 +366,31 @@ export default function App() {
     navigate('map');
   }, []);
 
+  // ---- P9 wheels: show a ride's verified edges / a jolt on the map; photograph a jolt ----
+  const [wheelsFocus, setWheelsFocus] = useState<WheelsFocus | null>(null);
+  const showRideOnMap = useCallback(
+    async (s: RideSummary) => {
+      setVisible((v) => (v.wheels ? v : { ...v, wheels: true }));
+      navigate('map');
+      // Footpaths/barriers changed server-side (verified states, suspected barriers); then the wheels layer itself.
+      await refreshLayers();
+      try {
+        const w = await api.wheels();
+        setData((cur) => ({ ...cur, wheels: w }));
+      } catch (err) {
+        console.warn('[wheels]', err);
+      }
+      setWheelsFocus({ kind: 'edges', edgeIds: s.verified_edge_ids, nonce: Date.now() });
+    },
+    [refreshLayers],
+  );
+  const showJolt = useCallback((feature: WheelsJoltFeature) => {
+    setVisible((v) => (v.wheels ? v : { ...v, wheels: true }));
+    setWheelsFocus({ kind: 'jolt', feature, nonce: Date.now() });
+    navigate('map');
+  }, []);
+  const photographJolt = useCallback((prefill: ReportPrefill) => openReport({ kind: 'barrier', prefill }), [openReport]);
+
   const barriers = useMemo(() => data.barriers?.features ?? [], [data.barriers]);
   const footpathCount = data.footpaths?.features.length ?? 0;
 
@@ -407,7 +448,11 @@ export default function App() {
         </main>
       ) : route === 'missions' ? (
         <main id="main" className="main main--page" tabIndex={-1}>
-          <MissionsPage lang={lang} onShowOnMap={showMission} />
+          <MissionsPage lang={lang} onShowOnMap={showMission} onShowJolt={showJolt} />
+        </main>
+      ) : route === 'ride' ? (
+        <main id="main" className="main main--page" tabIndex={-1}>
+          <RidePage lang={lang} onShowOnMap={(s) => void showRideOnMap(s)} />
         </main>
       ) : (
         <main id="main" className={`main${plannerOpen && route === 'map' ? ' main--planner' : ''}${route === 'reach' ? ' main--reach' : ''}`} tabIndex={-1}>
@@ -432,6 +477,8 @@ export default function App() {
             reach={route === 'reach' ? reach.state.result : null}
             reachFixed={reach.state.fixed}
             reachFocus={route === 'reach' ? reachFocus : null}
+            onPhotographJolt={photographJolt}
+            wheelsFocus={wheelsFocus}
           />
 
           {route === 'reach' && (

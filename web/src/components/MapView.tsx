@@ -3,6 +3,7 @@ import maplibregl, {
   Map as MapLibreMap,
   Popup,
   type AddLayerObject,
+  type FilterSpecification,
   type GeoJSONSource,
   type MapGeoJSONFeature,
   type MapLayerMouseEvent,
@@ -13,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import type { Feature, FeatureCollection, Geometry, LineString, MultiPolygon, Point, Polygon, Position } from 'geojson';
 import {
   imagePhotoUrl,
+  isWheelsEdgeFeature,
   localizedName,
   photoUrl,
   LAYER_KEYS,
@@ -29,9 +31,13 @@ import {
   type MissionFeature,
   type ReachResponse,
   type ReportItem,
+  type ReportPrefill,
   type ReportTarget,
   type RouteMode,
   type RouteResponse,
+  type WheelsFC,
+  type WheelsJoltFeature,
+  type WheelsJoltProps,
   type Zone,
 } from '../api';
 import type { Lang } from '../i18n';
@@ -53,6 +59,12 @@ export interface ReachFocus {
   /** Changes on every press so re-showing the same barrier re-flies. */
   nonce: number;
 }
+
+/** P9: "Show on map" after a ride fits the verified edges; "Show on map" on a jolt flies there and opens its popup. */
+export type WheelsFocus = ({ kind: 'edges'; edgeIds: number[] } | { kind: 'jolt'; feature: WheelsJoltFeature }) & {
+  /** Changes on every press so repeating the same focus re-fits. */
+  nonce: number;
+};
 
 interface MapViewProps {
   zone: Zone | null;
@@ -82,6 +94,9 @@ interface MapViewProps {
   /** Barrier ids currently simulated as fixed (their pins turn green). */
   reachFixed: number[];
   reachFocus: ReachFocus | null;
+  /** "Photograph this" pressed in a jolt popup: open the report sheet prefilled (P9). */
+  onPhotographJolt: (prefill: ReportPrefill) => void;
+  wheelsFocus: WheelsFocus | null;
 }
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -99,10 +114,16 @@ const LAYER_IDS: Record<LayerKey, string[]> = {
   anchors: ['anchors', 'anchors-label'],
   barriers: ['barriers', 'barriers-label'],
   images: ['images', 'images-heading'],
+  wheels: ['wheels-traversed', 'wheels-casing', 'wheels-core', 'wheels-jolts', 'wheels-jolts-label'],
 };
 
-/** Point layers that open popups; a coverage click is ignored when one of these is hit too. */
-const POINT_CLICK_LAYERS = ['barriers', 'anchors', 'demo-endpoints', 'images', 'pending-reports'];
+/** Point layers that open popups; a coverage / wheels-line click is ignored when one of these is hit too. */
+const POINT_CLICK_LAYERS = ['barriers', 'anchors', 'demo-endpoints', 'images', 'pending-reports', 'wheels-jolts'];
+/** Line layers with popups (hover pointer). */
+const WHEELS_LINE_LAYERS = ['wheels-traversed', 'wheels-casing', 'wheels-core'];
+
+/** Wheels layer colours (P9); the legend names them in words next to the pattern. */
+export const WHEELS_COLOURS = { verified: '#1b7f3b', traversed: '#8d5524', jolt: '#e65100' } as const;
 
 // Route planner / citizen-loop / reach-gap sources (not user-toggleable; driven by app state).
 const ROUTE_SOURCES = [
@@ -252,6 +273,34 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     filter: ['==', ['get', 'state'], 'blocked'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#c62828', 'line-width': 6, 'line-dasharray': [0.1, 1.8] },
+  });
+
+  // --- Wheels (P9): verified edges as a "rail" (thin green casing + white core), other traversed edges thin orange-brown ---
+  const isLine: FilterSpecification = ['==', ['geometry-type'], 'LineString'];
+  const verifiedFilter: FilterSpecification = ['all', isLine, ['==', ['get', 'verified_by_wheels'], true]];
+  add({
+    id: 'wheels-traversed',
+    type: 'line',
+    source: 'wheels',
+    filter: ['all', isLine, ['!=', ['get', 'verified_by_wheels'], true]],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': WHEELS_COLOURS.traversed, 'line-width': 3 },
+  });
+  add({
+    id: 'wheels-casing',
+    type: 'line',
+    source: 'wheels',
+    filter: verifiedFilter,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': WHEELS_COLOURS.verified, 'line-width': 9 },
+  });
+  add({
+    id: 'wheels-core',
+    type: 'line',
+    source: 'wheels',
+    filter: verifiedFilter,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 3 },
   });
 
   // --- Reach Gap outlines: solid (walker) / dashed (target) / dotted (simulated), above the footpaths ---
@@ -428,6 +477,30 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
         'text-ignore-placement': true,
       },
       paint: { 'text-color': '#ffffff' },
+    });
+  }
+
+  // --- Jolts (P9): hollow orange circle with a "!" — a suspected barrier that needs a photo ---
+  add({
+    id: 'wheels-jolts',
+    type: 'circle',
+    source: 'wheels',
+    filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'kind'], 'jolt']],
+    paint: {
+      'circle-radius': 11,
+      'circle-color': 'rgba(255,255,255,0.9)',
+      'circle-stroke-color': WHEELS_COLOURS.jolt,
+      'circle-stroke-width': 3,
+    },
+  });
+  if (hasGlyphs) {
+    add({
+      id: 'wheels-jolts-label',
+      type: 'symbol',
+      source: 'wheels',
+      filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'kind'], 'jolt']],
+      layout: { 'text-field': '!', 'text-font': TEXT_FONT, 'text-size': 15, 'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': WHEELS_COLOURS.jolt },
     });
   }
 
@@ -848,6 +921,7 @@ function normaliseBarrier(raw: Record<string, unknown>): BarrierProps {
 
 interface PopupActions {
   reportFixed?: (target: ReportTarget) => void;
+  photographJolt?: (prefill: ReportPrefill) => void;
 }
 
 function barrierPopupContent(p: BarrierProps, lang: Lang, t: TFunction, actions: PopupActions = {}): HTMLElement {
@@ -999,6 +1073,74 @@ function coveragePopupContent(p: CoverageProps, lang: Lang, t: TFunction): HTMLE
   return root;
 }
 
+// ---------- Wheels popups (P9) ----------
+
+function truthy(v: unknown): boolean {
+  return v === true || v === 'true';
+}
+
+function wheelsEdgePopupContent(raw: Record<string, unknown>, lang: Lang, t: TFunction): HTMLElement {
+  const root = el('div', 'popup');
+  root.lang = lang;
+  const verified = truthy(raw.verified_by_wheels);
+  root.appendChild(el('h3', 'popup__title', verified ? t('wheels.verifiedTitle') : t('wheels.traversedTitle')));
+  const dl = el('dl', 'popup__list');
+  const ri = typeof raw.roughness_index === 'number' ? raw.roughness_index : Number(raw.roughness_index);
+  row(dl, t('wheels.roughness'), Number.isFinite(ri) ? t('wheels.ms2', { v: ri.toFixed(2) }) : t('images.unknown'));
+  const n = typeof raw.n_traversals === 'number' ? raw.n_traversals : Number(raw.n_traversals) || 0;
+  row(dl, t('wheels.traversals'), String(n));
+  const last = formatTime(typeof raw.last_traversed_at === 'string' ? raw.last_traversed_at : null, lang);
+  row(dl, t('wheels.lastTraversed'), last ?? t('images.unknown'));
+  root.appendChild(dl);
+  root.appendChild(el('p', 'popup__note', verified ? t('wheels.verifiedNote') : t('wheels.traversedNote')));
+  if (truthy(raw.synthetic)) root.appendChild(el('span', 'badge badge--synthetic', t('badge.synthetic')));
+  return root;
+}
+
+/** Rendered-feature properties arrive as strings for some values; normalise the ones we read. */
+function normaliseJolt(raw: Record<string, unknown>): WheelsJoltProps {
+  const p = { ...raw } as unknown as WheelsJoltProps;
+  p.peak_m_s2 = typeof raw.peak_m_s2 === 'number' ? raw.peak_m_s2 : Number(raw.peak_m_s2) || 0;
+  p.barrier_id = typeof raw.barrier_id === 'number' ? raw.barrier_id : Number(raw.barrier_id);
+  p.synthetic = truthy(raw.synthetic);
+  p.name_en = typeof raw.name_en === 'string' ? raw.name_en : '';
+  p.name_hi = typeof raw.name_hi === 'string' ? raw.name_hi : '';
+  return p;
+}
+
+function joltPopupContent(p: WheelsJoltProps, coords: [number, number], lang: Lang, t: TFunction, actions: PopupActions = {}): HTMLElement {
+  const root = el('div', 'popup');
+  root.lang = lang;
+  const name = localizedName(p, lang) || t('wheels.joltTitle');
+  root.appendChild(el('h3', 'popup__title', name));
+  const dl = el('dl', 'popup__list');
+  row(dl, t('popup.kind'), t('wheels.joltTitle'));
+  row(dl, t('popup.class'), t(`barrierClass.${p.class}`, { defaultValue: String(p.class) }));
+  row(dl, t('wheels.peak'), t('wheels.ms2', { v: p.peak_m_s2.toFixed(1) }));
+  row(dl, t('popup.status'), t('wheels.suspected'));
+  root.appendChild(dl);
+  root.appendChild(el('p', 'popup__note', t('wheels.needsPhoto')));
+  if (p.synthetic) root.appendChild(el('span', 'badge badge--synthetic', t('badge.synthetic')));
+  if (actions.photographJolt) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn--small popup__action';
+    btn.textContent = t('wheels.photograph');
+    btn.setAttribute('aria-label', `${t('wheels.photograph')}: ${name}`);
+    const prefill: ReportPrefill = {
+      class_id: p.class,
+      lat: coords[1],
+      lon: coords[0],
+      name_en: p.name_en,
+      name_hi: p.name_hi,
+      barrier_id: Number.isFinite(p.barrier_id) ? p.barrier_id : undefined,
+    };
+    btn.addEventListener('click', () => actions.photographJolt?.(prefill));
+    root.appendChild(btn);
+  }
+  return root;
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
@@ -1026,6 +1168,8 @@ export default function MapView({
   reach,
   reachFixed,
   reachFocus,
+  onPhotographJolt,
+  wheelsFocus,
 }: MapViewProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1041,6 +1185,8 @@ export default function MapView({
   const onPickRef = useRef(onPick);
   const onSelectRouteRef = useRef(onSelectRoute);
   const onReportFixedRef = useRef(onReportFixed);
+  const onPhotographJoltRef = useRef(onPhotographJolt);
+  const wheelsRef = useRef<WheelsFC | undefined>(data.wheels);
   langRef.current = lang;
   tRef.current = t;
   errorRef.current = onBasemapError;
@@ -1048,6 +1194,8 @@ export default function MapView({
   onPickRef.current = onPick;
   onSelectRouteRef.current = onSelectRoute;
   onReportFixedRef.current = onReportFixed;
+  onPhotographJoltRef.current = onPhotographJolt;
+  wheelsRef.current = data.wheels;
 
   /** Popup actions close the popup first so focus does not end up in a removed node. */
   const popupActions = (): PopupActions => ({
@@ -1055,6 +1203,11 @@ export default function MapView({
       popupRef.current?.remove();
       popupRef.current = null;
       onReportFixedRef.current(target);
+    },
+    photographJolt: (prefill) => {
+      popupRef.current?.remove();
+      popupRef.current = null;
+      onPhotographJoltRef.current(prefill);
     },
   });
 
@@ -1122,7 +1275,8 @@ export default function MapView({
         if (pickRef.current) return;
         map.getCanvas().style.cursor = on ? 'pointer' : '';
       };
-      for (const id of [...POINT_CLICK_LAYERS, ...ROUTE_CLICK_LAYERS]) {
+      for (const id of [...POINT_CLICK_LAYERS, ...ROUTE_CLICK_LAYERS, ...WHEELS_LINE_LAYERS]) {
+        if (!map.getLayer(id)) continue;
         map.on('mouseenter', id, pointer(true));
         map.on('mouseleave', id, pointer(false));
       }
@@ -1194,6 +1348,21 @@ export default function MapView({
       };
       map.on('click', 'coverage-observed', onCoverageClick);
       map.on('click', 'coverage-unobserved', onCoverageClick);
+
+      // Wheels (P9): jolt points and the traversed / verified lines.
+      map.on('click', 'wheels-jolts', (e) => {
+        const f = first(e);
+        if (!f) return;
+        openPopup(map, coords(f), joltPopupContent(normaliseJolt(f.properties), coords(f), langRef.current, tRef.current, popupActions()));
+      });
+      const onWheelsLineClick = (e: MapLayerMouseEvent) => {
+        const f = first(e);
+        if (!f) return;
+        const pointLayers = POINT_CLICK_LAYERS.filter((id) => map.getLayer(id));
+        if (map.queryRenderedFeatures(e.point, { layers: pointLayers }).length > 0) return;
+        openPopup(map, [e.lngLat.lng, e.lngLat.lat], wheelsEdgePopupContent(f.properties, langRef.current, tRef.current));
+      };
+      for (const id of WHEELS_LINE_LAYERS) map.on('click', id, onWheelsLineClick);
 
       setReady(true);
     });
@@ -1429,6 +1598,30 @@ export default function MapView({
     openPopup(map, target, barrierPopupContent(selection.feature.properties, langRef.current, tRef.current, popupActions()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, ready]);
+
+  // Wheels focus (P9): fit the verified edges after a ride, or fly to a jolt and open its popup.
+  // Declared after the language effect: the map is recreated when coming back from another page,
+  // and that effect closes popups when `ready` flips, so this one must run later.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !wheelsFocus) return;
+    const duration = prefersReducedMotion() ? 0 : 800;
+    if (wheelsFocus.kind === 'jolt') {
+      const [lon, lat] = wheelsFocus.feature.geometry.coordinates;
+      const target: [number, number] = [lon, lat];
+      map.flyTo({ center: target, zoom: Math.max(map.getZoom(), 17), duration, essential: true });
+      openPopup(map, target, joltPopupContent(wheelsFocus.feature.properties, target, langRef.current, tRef.current, popupActions()));
+      return;
+    }
+    const edges = (wheelsRef.current?.features ?? []).filter(isWheelsEdgeFeature);
+    const wanted = new Set(wheelsFocus.edgeIds);
+    let lines = edges.filter((f) => wanted.has(f.properties.edge_id)).map((f) => f.geometry);
+    // Nothing matched (e.g. the layer was not refreshed yet): show everything the wheels have seen.
+    if (lines.length === 0) lines = edges.map((f) => f.geometry);
+    const b = boundsOf(lines);
+    if (b) map.fitBounds(b, { padding: 60, duration, maxZoom: 17.5 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wheelsFocus, ready]);
 
   return <div ref={containerRef} className="map" role="region" aria-label={t('map.label')} />;
 }

@@ -1,9 +1,14 @@
-// Minimal IndexedDB wrapper (no library) for the capture upload queue.
-// Database "samaan-capture", object store "pending", keyPath "key".
+// Minimal IndexedDB wrapper (no library) for the capture upload queue and the
+// ride sample batches. Database "samaan-capture":
+//   v1: object store "pending" (keyPath "key")       - photos waiting for upload
+//   v2: object store "rideBatches" (keyPath "key")   - accelerometer/GPS batches, key `${rideId}:${seq}`
+// Every upgrade step only creates stores that are missing, so a v1 database
+// upgrades in place without touching the pending photos.
 
 export const DB_NAME = 'samaan-capture';
 export const STORE_PENDING = 'pending';
-const DB_VERSION = 1;
+export const STORE_RIDE_BATCHES = 'rideBatches';
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -36,13 +41,21 @@ export function open(): Promise<IDBDatabase> {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
+        // Idempotent: each store is created only when missing, whatever the old version was.
         if (!db.objectStoreNames.contains(STORE_PENDING)) {
           db.createObjectStore(STORE_PENDING, { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains(STORE_RIDE_BATCHES)) {
+          db.createObjectStore(STORE_RIDE_BATCHES, { keyPath: 'key' });
         }
       };
       req.onsuccess = () => {
         const db = req.result;
-        db.onversionchange = () => db.close();
+        // Another tab is upgrading: close so it is not blocked; the next call reopens.
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
         resolve(db);
       };
       req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));

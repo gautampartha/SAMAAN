@@ -251,6 +251,11 @@ class Ride(SQLModel, table=True):
     user_id: int
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     ended_at: datetime | None = None
+    status: str = "active"  # active | ended | processed
+    device: str | None = None
+    sample_rate_hz: float | None = None
+    n_samples: int = 0
+    summary: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     synthetic: bool = False
 
 
@@ -261,6 +266,7 @@ class RideSample(SQLModel, table=True):
     lat: float | None = None
     lon: float | None = None
     gps_accuracy_m: float | None = None
+    speed_m_s: float | None = None
     ax: float | None = None
     ay: float | None = None
     az: float | None = None
@@ -268,11 +274,15 @@ class RideSample(SQLModel, table=True):
 
 class EdgeRideStat(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    edge_id: int = Field(index=True)
-    roughness_index: float | None = None
+    edge_id: int = Field(index=True, unique=True)
+    roughness_index: float | None = None  # median window RMS (m/s^2) over all traversals
+    window_rms: list[float] = Field(default_factory=list, sa_column=Column(JSON))
     n_traversals: int = 0
+    n_windows: int = 0
+    verified_by_wheels: bool = False
     last_traversed_at: datetime | None = None
     jolt_events: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    synthetic: bool = False
 
 
 class DemoRoute(SQLModel, table=True):

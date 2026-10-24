@@ -1,10 +1,17 @@
-// Tiny hash router: `#/` -> map, `#/capture`, `#/validate`, `#/missions`, `#/reach`. No dependency needed.
+// Tiny hash router: `#/` -> map, `#/capture`, `#/validate`, `#/missions`, `#/reach`, `#/ride`. No dependency needed.
 import { useEffect, useState } from 'react';
 
-export type Route = 'map' | 'capture' | 'validate' | 'missions' | 'reach';
-export const ROUTES: readonly Route[] = ['map', 'capture', 'validate', 'missions', 'reach'] as const;
+export type Route = 'map' | 'capture' | 'validate' | 'missions' | 'reach' | 'ride';
+export const ROUTES: readonly Route[] = ['map', 'capture', 'validate', 'missions', 'reach', 'ride'] as const;
 
-const HASHES: Record<Route, string> = { map: '#/', capture: '#/capture', validate: '#/validate', missions: '#/missions', reach: '#/reach' };
+const HASHES: Record<Route, string> = {
+  map: '#/',
+  capture: '#/capture',
+  validate: '#/validate',
+  missions: '#/missions',
+  reach: '#/reach',
+  ride: '#/ride',
+};
 
 export function routeFromHash(hash: string): Route {
   const clean = hash.replace(/^#\/?/, '').replace(/\/+$/, '').toLowerCase();

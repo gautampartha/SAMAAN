@@ -4,7 +4,7 @@ PY      := .venv/bin/python
 UV      := uv
 DB      := data/processed/samaan.sqlite
 
-.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval missions export-active api test lint web web-install clean-db help
+.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval missions export-active ride-calibration api test lint web web-install clean-db help
 
 help:
 	@echo "make setup        create .venv (Python 3.11) and install deps"
@@ -84,6 +84,9 @@ missions:
 
 export-active:
 	$(PY) -m ml.export_active_learning
+
+ride-calibration:
+	$(PY) -m eval.ride_calibration
 
 api:
 	$(PY) -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload

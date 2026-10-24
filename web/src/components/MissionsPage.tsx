@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { localizedName, missionApi, type MissionFeature } from '../api';
+import { api, isJoltFeature, localizedName, missionApi, type MissionFeature, type WheelsJoltFeature } from '../api';
 import type { Lang } from '../i18n';
 import { navigate } from '../router';
 import { CAPTURE_SESSION_KEY } from './CapturePage';
@@ -9,14 +9,18 @@ interface MissionsPageProps {
   lang: Lang;
   /** Navigate to the map and highlight this mission's line. */
   onShowOnMap: (mission: MissionFeature) => void;
+  /** Navigate to the map with the Wheels layer on and open this jolt's popup (P9). */
+  onShowJolt: (jolt: WheelsJoltFeature) => void;
 }
 
 type Phase = 'loading' | 'ready' | 'error';
 
-export default function MissionsPage({ lang, onShowOnMap }: MissionsPageProps) {
-  const { t } = useTranslation();
+export default function MissionsPage({ lang, onShowOnMap, onShowJolt }: MissionsPageProps) {
+  const { t, i18n } = useTranslation();
   const [phase, setPhase] = useState<Phase>('loading');
   const [missions, setMissions] = useState<MissionFeature[]>([]);
+  const [joltPhase, setJoltPhase] = useState<Phase>('loading');
+  const [jolts, setJolts] = useState<WheelsJoltFeature[]>([]);
   const [recomputing, setRecomputing] = useState(false);
   const [notice, setNotice] = useState<string>('');
   const [recomputeError, setRecomputeError] = useState(false);
@@ -27,15 +31,23 @@ export default function MissionsPage({ lang, onShowOnMap }: MissionsPageProps) {
     const ac = new AbortController();
     abortRef.current = ac;
     setPhase('loading');
-    try {
-      const fc = await missionApi.list(10, ac.signal);
-      if (ac.signal.aborted) return;
-      setMissions([...fc.features].sort((a, b) => a.properties.rank - b.properties.rank));
+    setJoltPhase('loading');
+    const [m, w] = await Promise.allSettled([missionApi.list(10, ac.signal), api.wheels(ac.signal)]);
+    if (ac.signal.aborted) return;
+    if (m.status === 'fulfilled') {
+      setMissions([...m.value.features].sort((a, b) => a.properties.rank - b.properties.rank));
       setPhase('ready');
-    } catch (err) {
-      if (ac.signal.aborted) return;
-      console.warn('[missions]', err);
+    } else {
+      console.warn('[missions]', m.reason);
       setPhase('error');
+    }
+    if (w.status === 'fulfilled') {
+      const points = w.value.features.filter(isJoltFeature).sort((a, b) => b.properties.peak_m_s2 - a.properties.peak_m_s2);
+      setJolts(points);
+      setJoltPhase('ready');
+    } else {
+      console.warn('[missions] wheels', w.reason);
+      setJoltPhase('error');
     }
   }, []);
 
@@ -70,6 +82,8 @@ export default function MissionsPage({ lang, onShowOnMap }: MissionsPageProps) {
     }
     navigate('capture');
   };
+
+  const nf1 = useMemo(() => new Intl.NumberFormat(i18n.language, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), [i18n.language]);
 
   return (
     <div className="page missions">
@@ -139,6 +153,54 @@ export default function MissionsPage({ lang, onShowOnMap }: MissionsPageProps) {
           })}
         </ol>
       )}
+
+      {/* ---- P9: jolts felt by wheelchair wheels that still need a photo ---- */}
+      <section className="jolts" aria-labelledby="jolts-title">
+        <h3 id="jolts-title" className="capture__title">
+          {t('missions.joltsTitle')}
+        </h3>
+        <p className="panel__hint">{t('missions.joltsIntro')}</p>
+        <p className="place__status" role="status" aria-live="polite">
+          {joltPhase === 'loading' ? t('missions.joltsLoading') : ''}
+        </p>
+        {joltPhase === 'error' && (
+          <p className="place__error" role="alert">
+            {t('missions.joltsError')}
+          </p>
+        )}
+        {joltPhase === 'ready' && jolts.length === 0 && <p className="rcard__none">{t('missions.joltsEmpty')}</p>}
+        {jolts.length > 0 && (
+          <ol className="mlist" aria-label={t('missions.joltsTitle')}>
+            {jolts.map((j, i) => {
+              const p = j.properties;
+              const name = localizedName(p, lang);
+              return (
+                <li key={p.barrier_id} className="mission mission--jolt" lang={lang}>
+                  <div className="mission__head">
+                    <span className="rcard__index rcard__index--jolt" aria-hidden="true">
+                      !
+                    </span>
+                    <h4 className="mission__title">
+                      <span className="sr-only">{t('missions.joltRank', { rank: i + 1 })}: </span>
+                      {name}
+                    </h4>
+                    <span className="badge badge--status badge--open">{t('status.suspected')}</span>
+                    {p.synthetic && <span className="badge badge--synthetic">{t('badge.synthetic')}</span>}
+                  </div>
+                  <p className="mission__meta">
+                    {t(`barrierClass.${p.class}`, { defaultValue: String(p.class) })} · {t('missions.joltPeak', { v: nf1.format(p.peak_m_s2) })}
+                  </p>
+                  <div className="planner__actions">
+                    <button type="button" className="btn btn--primary" onClick={() => onShowJolt(j)} aria-label={`${t('missions.show')}: ${name}`}>
+                      {t('missions.show')}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
     </div>
   );
 }

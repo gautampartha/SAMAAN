@@ -30,7 +30,8 @@
     "coverage": "Image coverage",
     "anchors": "Landmarks",
     "demo": "Demo route",
-    "images": "Images"
+    "images": "Images",
+    "wheels": "Wheels"
   },
   "state": {
     "clear": "Clear",
@@ -68,7 +69,11 @@
     "reachTarget": "Purple blob with a dashed outline: footpaths the chosen profile reaches",
     "reachSimulated": "Green blob with a dotted outline, drawn on top: the chosen profile's reach once the ticked fixes are applied",
     "reachAnchor": "Dark blue star with a white edge and the place name: the start point of the reach",
-    "reachFix": "Numbered purple pin with a white ring: a barrier from the to-do list; it turns green while its fix is simulated"
+    "reachFix": "Numbered purple pin with a white ring: a barrier from the to-do list; it turns green while its fix is simulated",
+    "wheelsTitle": "Wheels as sensors",
+    "wheelsVerified": "Double line like a rail, green edges with a white core: a footpath a wheelchair rolled over smoothly, verified by wheels",
+    "wheelsTraversed": "Thin orange-brown line: wheels rolled here, but the ride was too rough or too short to verify it",
+    "wheelsJolt": "Hollow orange circle with an exclamation mark: a jolt felt by the wheels, a suspected barrier that still needs a photo"
   },
   "severity": {
     "label": "Severity",
@@ -122,7 +127,8 @@
   "status": {
     "active": "Active",
     "fixed": "Fixed",
-    "expired": "Expired"
+    "expired": "Expired",
+    "suspected": "Suspected"
   },
   "badge": {
     "synthetic": "Synthetic demo data"
@@ -148,7 +154,23 @@
     "capture": "Capture",
     "validate": "Validate",
     "missions": "Missions",
-    "reach": "Reach Gap"
+    "reach": "Reach Gap",
+    "ride": "Ride"
+  },
+  "wheels": {
+    "verifiedTitle": "Verified by wheels",
+    "traversedTitle": "Traversed by wheels",
+    "roughness": "Roughness",
+    "ms2": "{{v}} m/s²",
+    "traversals": "Traversals",
+    "lastTraversed": "Last traversed",
+    "verifiedNote": "A wheelchair rolled over this segment smoothly, so it counts as checked.",
+    "traversedNote": "A wheelchair rolled here, but the ride was too rough or too short to verify the segment.",
+    "joltTitle": "Jolt",
+    "peak": "Peak jolt",
+    "suspected": "Suspected — needs a photo",
+    "needsPhoto": "A wheelchair hit something here. Take a photo so other citizens can confirm what it is.",
+    "photograph": "Photograph this"
   },
   "images": {
     "source": {
@@ -454,7 +476,9 @@
       "invalid": "The report was rejected as invalid. Check the class, severity and photo.",
       "generic": "Could not send the report. The SAMAAN API is unreachable or returned an error."
     },
-    "pendingMarker": "Pending report (not yet validated)"
+    "pendingMarker": "Pending report (not yet validated)",
+    "prefillTitle": "Suspected barrier from a wheelchair ride",
+    "prefilled": "the report will be placed at {{lat}}, {{lon}}; stand within 50 m of it"
   },
   "validate": {
     "title": "Validate reports",
@@ -525,7 +549,82 @@
     "recomputeError": "Could not recompute missions. The SAMAAN API is unreachable or returned an error.",
     "onMap": "Mission {{rank}}: {{name}}",
     "clearMap": "Hide mission",
-    "walkHint": "Opens the capture page with session id mission-{{id}}."
+    "walkHint": "Opens the capture page with session id mission-{{id}}.",
+    "joltsTitle": "Photograph these jolts",
+    "joltsIntro": "Wheelchair rides felt a jolt at these spots. A photo turns a suspected barrier into one that citizens can validate.",
+    "joltsLoading": "Loading jolts…",
+    "joltsEmpty": "No suspected jolts yet. Record a ride or replay the demo ride on the Ride page.",
+    "joltsError": "Could not load jolts. The SAMAAN API is unreachable or returned an error.",
+    "joltRank": "Jolt {{rank}}",
+    "joltPeak": "peak {{v}} m/s²"
+  },
+  "ride": {
+    "title": "Ride",
+    "intro": "Mount the phone firmly on the wheelchair (frame or armrest, screen facing up), press Start and ride as usual. Smooth stretches verify footpaths; jolts mark suspected barriers.",
+    "httpsHint": "Needs a secure connection (HTTPS or localhost), motion-sensor permission and location.",
+    "liveTitle": "Live ride counters",
+    "start": "Start ride",
+    "stop": "Stop ride",
+    "requesting": "Asking for motion-sensor permission…",
+    "starting": "Creating the ride…",
+    "recording": "Recording. Keep the phone mounted; the screen stays awake.",
+    "recordingNoWakeLock": "Recording. This browser cannot keep the screen awake, so keep it on yourself.",
+    "flushing": "Sending the last batches ({{pending}} pending)…",
+    "ending": "Ending the ride; the server is processing it…",
+    "demoRunning": "Generating and processing the demo ride…",
+    "offline": "Offline – batches are stored on the phone and sent when you are back online.",
+    "retryIn": "A batch could not be sent; retrying in {{seconds}} s.",
+    "retryNow": "Retry now",
+    "endAnyway": "End without the pending batches",
+    "retryEnd": "Retry ending the ride",
+    "duration": "Duration",
+    "samples": "Samples",
+    "batches": "Batches",
+    "batchesValue": "{{sent}} sent · {{pending}} pending",
+    "speed": "Speed",
+    "speedValue": "{{v}} km/h",
+    "rms": "Vibration (RMS, last second)",
+    "rmsValue": "{{v}} m/s²",
+    "lastJolt": "Last jolt",
+    "lastJoltValue": "{{s}} s ago",
+    "noJolt": "none yet",
+    "waiting": "waiting…",
+    "gpsFix": "GPS {{lat}}, {{lon}} (±{{accuracy}} m)",
+    "gpsWaiting": "Waiting for a GPS fix",
+    "wake": {
+      "on": "screen kept awake",
+      "off": "screen may sleep"
+    },
+    "joltHints_one": "{{count}} jolt felt",
+    "joltHints_other": "{{count}} jolts felt",
+    "hintOnly": "Vibration and jolts shown here are hints from the phone; the server decides what becomes verified or suspected.",
+    "live": "Recording {{duration}}, {{samples}} samples, {{sent}} batches sent, {{pending}} pending.",
+    "liveJolt": "Jolt felt.",
+    "summaryTitle": "Ride summary",
+    "verifiedEdges_one": "You verified {{count}} footpath segment by wheels",
+    "verifiedEdges_other": "You verified {{count}} footpath segments by wheels",
+    "joltsFound_one": "{{count}} suspected barrier found",
+    "joltsFound_other": "{{count}} suspected barriers found",
+    "windows": "Windows matched",
+    "windowsValue": "{{matched}} of {{total}}",
+    "edgesTraversed": "Segments traversed",
+    "roughnessTitle": "Roughness per segment",
+    "roughnessRow": "Segment {{edge}}: {{v}} m/s² over {{windows}} windows",
+    "showOnMap": "Show on map",
+    "newRide": "New ride",
+    "demoTitle": "No wheelchair in the room?",
+    "demoHint": "The server generates a synthetic ride along Riya's route and processes it exactly like a real one, so the map can show segments turning verified by wheels.",
+    "demo": "Replay demo ride",
+    "errors": {
+      "noMotion": "This device has no motion sensors or the page is not served over HTTPS.",
+      "denied": "Motion-sensor permission was denied. Allow motion and orientation access for this site and try again.",
+      "noUser": "Tell us who you are first.",
+      "createFailed": "Could not start the ride. The SAMAAN API is unreachable or returned an error.",
+      "rejected": "The server rejected a batch of samples (HTTP {{status}}); the ride may have ended on the server.",
+      "network": "Could not send the samples; they are stored on the phone and will be retried.",
+      "endFailed": "Could not end the ride. The SAMAAN API is unreachable or returned an error.",
+      "demoFailed": "Could not replay the demo ride. The SAMAAN API is unreachable or returned an error."
+    }
   },
   "reach": {
     "title": "Reach Gap",

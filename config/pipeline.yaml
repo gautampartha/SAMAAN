@@ -110,12 +110,27 @@ missions:                    # plan 6.9
   min_od_distance_m: 200
   max_od_distance_m: 1500
 
-ride:
+ride:                        # plan 6.10. Thresholds are TODO: calibrate (eval/ride_calibration.py)
   accel_hz: 50
   gps_hz: 1
   upload_batch_s: 10
+  window_s: 1.0
+  highpass_window_s: 1.0           # rolling-mean length subtracted from the gravity axis
   map_match_distance_m: 10
+  heading_agreement_deg: 60        # window heading vs edge direction (either way)
+  min_speed_m_s: 0.15              # slower windows are "stopped" and ignored for roughness
+  max_gps_accuracy_m: 20
   verified_fraction_of_edge: 0.8
+  smooth_rms_threshold_m_s2: 1.2   # TODO: calibrate - a traversal with all windows below this is smooth
+  jolt_peak_threshold_m_s2: 7.0    # TODO: calibrate - a window peak above this is a jolt
+  jolt_merge_distance_m: 4.0       # jolts this close to an existing barrier attach to it
+  jolt_class: broken_surface       # class for a suspected barrier from a jolt
+  jolt_confidence: 0.3
+  demo_ride:
+    speed_m_s: 0.9
+    smooth_rms_m_s2: 0.5
+    jolt_peak_m_s2: 12.0
+    random_seed: 11
 
 reports:                     # plan 6.8. team_estimate unless noted
   max_photo_gps_offset_m: 50

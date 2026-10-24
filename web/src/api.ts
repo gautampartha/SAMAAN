@@ -28,6 +28,8 @@ export interface Zone {
 
 export type FootpathState = 'clear' | 'blocked' | 'unknown';
 
+export type ObservedBy = 'image' | 'wheel' | 'report';
+
 export interface FootpathProps {
   id: number;
   kind: string;
@@ -36,6 +38,8 @@ export interface FootpathProps {
   side: 'L' | 'R' | 'none';
   highway: string | null;
   synthetic: boolean;
+  /** How the state was observed (P9); absent on older API builds. */
+  observed_by?: ObservedBy | (string & {}) | null;
 }
 
 export type BarrierClassId =
@@ -48,7 +52,8 @@ export type BarrierClassId =
   | 'vendor_encroachment'
   | 'bike_barrier';
 
-export type BarrierStatus = 'active' | 'fixed' | 'expired';
+/** `suspected` = a jolt felt by wheelchair wheels that still needs a photo (P9). */
+export type BarrierStatus = 'active' | 'fixed' | 'expired' | 'suspected';
 export type Severity = 1 | 2 | 3 | 4 | 5;
 
 export interface BarrierProps {
@@ -117,8 +122,8 @@ export type DemoFC = FeatureCollection<Point | LineString, DemoProps>;
 export type ImageFC = FeatureCollection<Point, ImageProps>;
 export type BarrierFeature = Feature<Point, BarrierProps>;
 
-export type LayerKey = 'footpaths' | 'barriers' | 'coverage' | 'anchors' | 'demo' | 'images';
-export const LAYER_KEYS: readonly LayerKey[] = ['footpaths', 'barriers', 'coverage', 'anchors', 'demo', 'images'] as const;
+export type LayerKey = 'footpaths' | 'barriers' | 'coverage' | 'anchors' | 'demo' | 'images' | 'wheels';
+export const LAYER_KEYS: readonly LayerKey[] = ['footpaths', 'barriers', 'coverage', 'anchors', 'demo', 'images', 'wheels'] as const;
 
 export interface LayerData {
   footpaths?: FootpathFC;
@@ -127,6 +132,7 @@ export interface LayerData {
   anchors?: AnchorFC;
   demo?: DemoFC;
   images?: ImageFC;
+  wheels?: WheelsFC;
 }
 
 export class ApiError extends Error {
@@ -183,6 +189,7 @@ export const api = {
   anchors: (signal?: AbortSignal) => getJson<AnchorFC>('/layers/anchors', signal),
   demo: (signal?: AbortSignal) => getJson<DemoFC>('/layers/demo', signal),
   images: (signal?: AbortSignal) => getJson<ImageFC>('/layers/images', signal),
+  wheels: (signal?: AbortSignal) => getJson<WheelsFC>('/layers/wheels', signal),
 };
 
 /** URL of the stored photo for an image feature (`has_photo` must be true). */
@@ -462,6 +469,17 @@ export interface ReportTarget {
   severity: Severity;
 }
 
+/** "Photograph this" on a jolt: the report sheet opens with the class and position filled in (P9). */
+export interface ReportPrefill {
+  class_id: ReportClassId | (string & {});
+  lat: number;
+  lon: number;
+  name_en?: string;
+  name_hi?: string;
+  /** The suspected barrier the jolt created, when known. */
+  barrier_id?: number;
+}
+
 export interface ReportItem {
   id: number;
   kind: ReportKind;
@@ -705,6 +723,112 @@ export interface ReachParams {
   /** Barrier ids to simulate as fixed (omitted when empty). */
   fixed?: number[];
 }
+
+// ---------- P9 wheels as sensors (POST /rides, GET /layers/wheels) ----------
+
+export type RideStatus = 'active' | 'ended' | 'processed';
+
+export interface Ride {
+  id: number | string;
+  user_id: number | string;
+  started_at: string;
+  status: RideStatus;
+}
+
+export interface NewRide {
+  user_id: number | string;
+  /** ISO 8601. */
+  started_at: string;
+  device?: string;
+  sample_rate_hz?: number;
+}
+
+/** One accelerometer sample; a sample that carries `lat`/`lon` is also a GPS fix. */
+export interface RideSample {
+  /** Seconds since ride start. */
+  t: number;
+  /** m/s², device frame, including gravity. */
+  ax: number;
+  ay: number;
+  az: number;
+  lat?: number;
+  lon?: number;
+  gps_accuracy_m?: number;
+  speed_m_s?: number;
+}
+
+export interface SamplesAccepted {
+  accepted: number;
+  total: number;
+}
+
+export interface RideRoughness {
+  edge_id: number;
+  /** m/s² */
+  roughness_index: number;
+  n_windows: number;
+}
+
+export interface RideSummary {
+  id: number | string;
+  status: RideStatus;
+  duration_s: number;
+  n_samples: number;
+  n_windows: number;
+  n_matched_windows: number;
+  edges_traversed: number;
+  edges_verified_by_wheels: number;
+  jolts: number;
+  verified_edge_ids: number[];
+  jolt_barrier_ids: number[];
+  roughness: RideRoughness[];
+  synthetic: boolean;
+}
+
+export interface WheelsEdgeProps {
+  edge_id: number;
+  /** m/s²; null when no window matched. */
+  roughness_index: number | null;
+  n_traversals: number;
+  verified_by_wheels: boolean;
+  last_traversed_at: string | null;
+  synthetic: boolean;
+}
+
+export interface WheelsJoltProps {
+  kind: 'jolt';
+  barrier_id: number;
+  class: BarrierClassId | (string & {});
+  name_en: string;
+  name_hi: string;
+  /** m/s² */
+  peak_m_s2: number;
+  status: 'suspected' | (string & {});
+  synthetic: boolean;
+}
+
+export type WheelsFC = FeatureCollection<LineString | Point, WheelsEdgeProps | WheelsJoltProps>;
+export type WheelsEdgeFeature = Feature<LineString, WheelsEdgeProps>;
+export type WheelsJoltFeature = Feature<Point, WheelsJoltProps>;
+
+export function isJoltFeature(f: Feature<LineString | Point, WheelsEdgeProps | WheelsJoltProps>): f is WheelsJoltFeature {
+  return f.geometry.type === 'Point' && (f.properties as { kind?: unknown }).kind === 'jolt';
+}
+
+export function isWheelsEdgeFeature(f: Feature<LineString | Point, WheelsEdgeProps | WheelsJoltProps>): f is WheelsEdgeFeature {
+  return f.geometry.type === 'LineString';
+}
+
+const rideId = (id: number | string) => encodeURIComponent(String(id));
+
+export const rideApi = {
+  create: (input: NewRide, signal?: AbortSignal) => postJson<Ride>('/rides', input, signal),
+  samples: (id: number | string, samples: RideSample[], signal?: AbortSignal) =>
+    postJson<SamplesAccepted>(`/rides/${rideId(id)}/samples`, { samples }, signal),
+  end: (id: number | string, ended_at: string, signal?: AbortSignal) => postJson<RideSummary>(`/rides/${rideId(id)}/end`, { ended_at }, signal),
+  get: (id: number | string, signal?: AbortSignal) => getJson<RideSummary>(`/rides/${rideId(id)}`, signal),
+  replayDemo: (user_id: number | string, signal?: AbortSignal) => postJson<RideSummary>('/rides/replay-demo', { user_id }, signal),
+};
 
 export const reachApi = {
   anchors: (signal?: AbortSignal) => getJson<ReachAnchorsResponse>('/reach/anchors', signal),

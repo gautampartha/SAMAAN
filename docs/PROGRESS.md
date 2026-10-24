@@ -806,5 +806,105 @@ the gap and the ranking; `eval/reach_eval.py` (P10) will record the real numbers
 
 ---
 
-## Phase P9 — Wheels as sensors
+## Phase P9 — Wheels as sensors (2026-10-24) — done
+
+### Plan
+Plan 6.10 (phone only; 9b ESP32 is cut first by the plan's order): rides with accelerometer
+(~50 Hz) + GPS (1 Hz) uploaded in 10 s batches; processing = pick the gravity axis, high-pass by
+subtracting a 1 s rolling mean, 1 s windows with RMS and peak, GPS interpolation + heading per
+window, map-match to the nearest footpath edge within 10 m whose direction agrees with the GPS
+heading; per edge roughness = median window RMS over traversals; a smooth traversal covering
+≥ 80 % of an edge = **verified by wheels** → `Coverage(source=wheel)` → `clear` via the shared
+state recompute; window peak above the jolt threshold → `suspected` barrier (not routed on) with a
+"photograph this" mission; thresholds in `config/pipeline.yaml` marked TODO: calibrate;
+`eval/ride_calibration.py` picks thresholds from labelled calibration rides (human task) and
+refuses synthetic rides; a synthetic demo ride generator (flagged synthetic) for the pitch's
+"replay a ride" step. Web: Ride page (Start/Stop, DeviceMotion, Wake Lock, batches, summary),
+wheels layer, jolt markers, replay demo.
+
+### What was built (backend)
+- `pipeline/ride/process.py`: gravity axis = the axis with the largest mean magnitude (works for
+  any mounting); high-pass = sample minus a centred 1 s rolling mean; 1 s windows with RMS and
+  peak; GPS fixes interpolated to the window centre (position, heading, speed, accuracy);
+  map-matching to the nearest edge within 10 m whose direction agrees within 60° (either way,
+  undirected graph), skipping stopped windows and poor GPS; consecutive windows on one edge form a
+  traversal; **verified by wheels** when the traversal spans ≥ 80 % of the edge and every window
+  RMS is below the smooth threshold → `Coverage(source=wheel)` → `clear` through the shared state
+  recompute (`observed_by=wheel`); `EdgeRideStat` keeps the last 500 window RMS values, the
+  median as `roughness_index`, traversal/window counts and jolt events; a window peak above the
+  jolt threshold creates a **`suspected` barrier** (class from config, confidence 0.3, tag `jolt`)
+  or attaches to a barrier within 4 m; suspected barriers never enter routing.
+- API: `POST /rides`, `POST /rides/{id}/samples` (10 s batches), `POST /rides/{id}/end` (process +
+  state recompute + routing reload), `GET /rides/{id}`, `POST /rides/replay-demo` (a synthetic
+  ride along a contiguous unknown stretch next to Riya's route, flagged synthetic on the ride,
+  samples, coverage, stats and barrier), `GET /layers/wheels` (edges with roughness and the
+  verified flag + jolt points).
+- `eval/ride_calibration.py` (`make ride-calibration`): labelled windows (smooth / broken / kerb
+  from `data/ground_truth/ride_calibration.csv`) → suggested thresholds (midpoint between the
+  smooth 95th and broken 5th RMS percentiles; between the non-kerb 99th and kerb 10th peak
+  percentiles), separability flags, histogram PNG, `eval/results/ride_calibration.*`; refuses
+  synthetic rides. Thresholds in `config/pipeline.yaml` stay `TODO: calibrate` until then.
+- Tests (117 passing): gravity axis + high-pass, windows/heading/speed, direction-aware matching
+  rejects a nearer perpendicular edge, stopped windows ignored, coverage fraction, full API ride
+  in batches flipping an unknown edge to clear with `observed_by=wheel`, rough ride does not verify
+  and its jolt becomes a suspected barrier outside routing, synthetic replay flagged throughout,
+  generator shape, threshold picking.
+- Real zone (scratch copy): the demo replay processes a 173 s synthetic ride in ~2 s, verifies 3
+  edges (all flipped unknown → clear) and raises 1 suspected barrier. 9b (ESP32) not built, per the
+  plan's cut order.
+
+### What was built (web)
+- `#/ride` page: mounting instructions, user chip, 64 px **Start ride** (requests motion
+  permission on iOS inside the tap, creates the ride, starts `devicemotion` at the event rate and
+  high-accuracy GPS at ~1 Hz, keeps the screen awake with the Wake Lock API), live counters
+  (duration, samples, batches sent/pending, speed, 1 s RMS, "last jolt N s ago"), 10 s batches
+  persisted in IndexedDB before upload with backoff and offline pause, **Stop** → flush → end →
+  summary ("You verified N footpath segments by wheels · M suspected barriers found", windows
+  matched, segments traversed, roughness list, synthetic badge) with **Show on map**; a secondary
+  **Replay demo ride** button, clearly badged synthetic, for the pitch.
+- Map: "Wheels" layer (off by default; Show on map turns it on and fits): verified-by-wheels
+  edges as a green/white rail pattern, traversed-but-not-verified edges as a thin brown line,
+  jolts as hollow orange "!" markers; popups with roughness, traversals, last traversed; the jolt
+  popup's **Photograph this** opens the report sheet prefilled with the class and the jolt
+  position (device GPS still checked). Legend rows in words. Missions page gained a second list
+  "Photograph these jolts".
+- Verified live against the API on a scratch DB: Replay demo → "You verified 3 footpath segments
+  by wheels · 1 suspected barrier found" → Show on map draws the rail pattern on the three edges
+  (previously dashed grey = unknown, now solid = clear), the brown segment and the "!" marker. No
+  console errors. A real ride with motion sensors cannot run in the desktop pane (human task).
+
+### Decisions taken alone
+- The gravity axis is detected per ride (largest mean magnitude), so the phone can be mounted in
+  any orientation; the plan's "vertical acceleration" is that axis.
+- High-pass = 1 s rolling-mean subtraction (no scipy dependency); calibration decides thresholds.
+- Suspected barriers (jolts) are visible on the map and in Missions but never enter routing or
+  the Reach Gap until a photo report verifies them.
+- The demo replay runs along a contiguous unknown stretch next to Riya's route so the visible
+  flip exists on the seeded zone; the ride, its samples, coverage, stats and barrier are all
+  flagged synthetic.
+- ESP32 (9b) skipped, per the plan's cut order.
+
+### Open issues
+- Thresholds (`smooth_rms_threshold_m_s2` 1.2, `jolt_peak_threshold_m_s2` 7.0) are placeholders
+  until calibration rides exist; the client-side jolt hint uses a fixed 6 m/s².
+- Map-matching is per window with no sequence smoothing; at junctions a window can attach to a
+  crossing instead of the sidewalk. Fine for coverage, revisit if jolts land on wrong edges.
+- Speed comes from GPS fix spacing (1 Hz), so `min_speed` filtering is coarse.
+
+### Human tasks (P9)
+25. **Borrow a wheelchair (or use a trolley/pram)** and do **calibration rides** (45 min, two
+    people): mount the phone, Start ride, ride ~40 s on a known smooth stretch, ~30 s on a known
+    broken stretch, then over a known kerb 3 times, noting the ride timer at each segment start
+    and end. Stop. Fill `data/ground_truth/ride_calibration.csv` (see `.example`), run
+    `make ride-calibration`, copy the suggested thresholds into `config/pipeline.yaml` → `ride`,
+    commit `eval/results/ride_calibration.*`.
+26. **One real ride along the demo route** (15 min): Start ride at the metro, ride Riya's route,
+    Stop, check the summary and the Wheels layer; note any edge that did not verify.
+27. **Review Hindi strings** (10 min) in `web/src/i18n/hi.json` `ride.*`, `wheels.*`: "झटका"
+    (jolt), "ऊबड़-खाबड़पन" (roughness index), "पहियों से सत्यापित", layer name "पहिए",
+    "मिलान हुए विंडो".
+
+---
+
+## Phase P10 — Eval, demo, polish
 _Not started. Waiting for "go"._

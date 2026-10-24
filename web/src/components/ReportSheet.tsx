@@ -9,6 +9,7 @@ import {
   reportApi,
   type ReportClassId,
   type ReportItem,
+  type ReportPrefill,
   type ReportTarget,
   type Severity,
 } from '../api';
@@ -18,7 +19,14 @@ import { geoQuality, useSensors, type GeoFix, type Orientation } from '../sensor
 import { refreshUser, useUser } from '../user';
 import UserDialog, { UserChip, trapTab } from './UserDialog';
 
-export type ReportMode = { kind: 'barrier' } | { kind: 'fixed'; target: ReportTarget };
+/** `prefill` (P9, "Photograph this" on a jolt): class and barrier position come from the suspected barrier. */
+export type ReportMode = { kind: 'barrier'; prefill?: ReportPrefill } | { kind: 'fixed'; target: ReportTarget };
+
+const ALL_CLASS_IDS: readonly string[] = [...BARRIER_CLASS_IDS, ...REPORT_ONLY_CLASS_IDS];
+
+function knownClass(id: string | undefined): ReportClassId | null {
+  return id && ALL_CLASS_IDS.includes(id) ? (id as ReportClassId) : null;
+}
 
 interface ReportSheetProps {
   mode: ReportMode;
@@ -110,6 +118,7 @@ export default function ReportSheet({ mode, lang, onClose, onSubmitted }: Report
   const [changingUser, setChangingUser] = useState(false);
   const fixed = mode.kind === 'fixed';
   const target = mode.kind === 'fixed' ? mode.target : null;
+  const prefill = mode.kind === 'barrier' ? (mode.prefill ?? null) : null;
 
   // GPS + compass: start immediately (iOS needs a gesture for the compass; that only drops the heading).
   const sensors = useSensors();
@@ -123,7 +132,7 @@ export default function ReportSheet({ mode, lang, onClose, onSubmitted }: Report
   // Camera runs only while a photo is still to be taken and the sheet is in the foreground.
   const camera = useCamera(!photo && !showUserDialog);
   const [photoError, setPhotoError] = useState(false);
-  const [classId, setClassId] = useState<ReportClassId | null>(target ? (target.class_id as ReportClassId) : null);
+  const [classId, setClassId] = useState<ReportClassId | null>(target ? (target.class_id as ReportClassId) : knownClass(prefill?.class_id));
   const [severity, setSeverity] = useState<Severity | null>(target ? target.severity : null);
   const [note, setNote] = useState('');
   const [state, setState] = useState<SubmitState>('idle');
@@ -192,7 +201,8 @@ export default function ReportSheet({ mode, lang, onClose, onSubmitted }: Report
     if (!severity) return setError('noSeverity');
     if (fixed && !photo) return setError('noPhoto');
     const device = sensors.fixRef.current;
-    const at = photo?.fix ?? device;
+    // A prefilled jolt is the barrier position; the photo/device fix is where the reporter stands.
+    const at = prefill ? { lat: prefill.lat, lon: prefill.lon } : (photo?.fix ?? device);
     if (!at) return setError('noGps');
     const o = photo?.orientation ?? sensors.orientationRef.current;
     setState('sending');
@@ -280,6 +290,15 @@ export default function ReportSheet({ mode, lang, onClose, onSubmitted }: Report
           </div>
           <UserChip onChange={() => setChangingUser(true)} />
           <p className="panel__hint">{fixed ? t('report.introFixed') : t('report.intro')}</p>
+
+          {prefill && (
+            <p className="sheet__target" lang={lang}>
+              <span className="field__label">{t('report.prefillTitle')}: </span>
+              {prefill.name_en ? localizedName({ name_en: prefill.name_en, name_hi: prefill.name_hi ?? null }, lang) : null}
+              {prefill.name_en ? ' · ' : null}
+              {t('report.prefilled', { lat: prefill.lat.toFixed(5), lon: prefill.lon.toFixed(5) })}
+            </p>
+          )}
 
           {target && (
             <p className="sheet__target" lang={lang}>

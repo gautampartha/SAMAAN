@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LAYER_KEYS, type LayerKey } from '../api';
-import { IMAGE_COLOURS } from './MapView';
+import { IMAGE_COLOURS, WHEELS_COLOURS } from './MapView';
 import { BarrierRingSwatch, ROUTE_ENDPOINT_COLOURS, RouteSwatch, UnknownOverlaySwatch } from './routeStyles';
 import { ReachAnchorSwatch, ReachBlobSwatch, ReachFixSwatch } from './reachStyles';
 
@@ -58,6 +58,26 @@ function PendingReportSwatch() {
     <svg className="swatch" viewBox="0 0 56 24" width="56" height="24" aria-hidden="true" focusable="false">
       <circle cx="28" cy="12" r="9" fill="rgba(255,255,255,0.85)" stroke="#0b5fa5" strokeWidth="3" />
       <text x="28" y="16" textAnchor="middle" fontSize="11" fill="#0b5fa5" fontWeight="700">?</text>
+    </svg>
+  );
+}
+
+/** Verified by wheels: a "rail", thin green casing with a white core (pattern, not only colour). */
+function WheelsRailSwatch() {
+  return (
+    <svg className="swatch" viewBox="0 0 56 16" width="56" height="16" aria-hidden="true" focusable="false">
+      <line x1="4" y1="8" x2="52" y2="8" stroke={WHEELS_COLOURS.verified} strokeWidth="8" strokeLinecap="round" />
+      <line x1="4" y1="8" x2="52" y2="8" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Jolt: hollow orange circle with an exclamation mark. */
+function JoltSwatch() {
+  return (
+    <svg className="swatch" viewBox="0 0 56 24" width="56" height="24" aria-hidden="true" focusable="false">
+      <circle cx="28" cy="12" r="9" fill="rgba(255,255,255,0.9)" stroke={WHEELS_COLOURS.jolt} strokeWidth="3" />
+      <text x="28" y="16.5" textAnchor="middle" fontSize="13" fill={WHEELS_COLOURS.jolt} fontWeight="700">!</text>
     </svg>
   );
 }
@@ -130,6 +150,22 @@ export default function Legend({ visible, onToggle, onClose, headingRef }: Legen
         <div className="legend__row">
           <dt><EndpointSwatch colour={ROUTE_ENDPOINT_COLOURS.destination} label="B" /> {t('route.destination')}</dt>
           <dd>{t('legend.demoDestination')}</dd>
+        </div>
+      </dl>
+
+      <h3 className="panel__subtitle">{t('legend.wheelsTitle')}</h3>
+      <dl className="legend">
+        <div className="legend__row">
+          <dt><WheelsRailSwatch /> {t('wheels.verifiedTitle')}</dt>
+          <dd>{t('legend.wheelsVerified')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><LineSwatch colour={WHEELS_COLOURS.traversed} width={3} /> {t('wheels.traversedTitle')}</dt>
+          <dd>{t('legend.wheelsTraversed')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><JoltSwatch /> {t('wheels.joltTitle')}</dt>
+          <dd>{t('legend.wheelsJolt')}</dd>
         </div>
       </dl>
 
