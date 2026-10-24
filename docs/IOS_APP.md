@@ -76,3 +76,14 @@ Debug → Location menu; the in-app "Simulate walk" also works.
 ## Android
 `npx cap add android` in `web/` produces the matching Android project (needs Android Studio);
 nothing in the web app changes.
+
+## Voice agent (Vapi)
+
+Export the public key before starting the API; the app fetches it from `GET /voice/config`:
+
+```bash
+VAPI_PUBLIC_KEY=<public key> make api-lan
+```
+
+Vapi calls the API back at `<API_URL>/voice/tools`, so the API must be reachable from the internet
+(the cloudflared tunnel) and the app must have been built with that URL (`make ios-sync API_URL=…`).

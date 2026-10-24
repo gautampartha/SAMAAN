@@ -97,6 +97,7 @@ api:
 	$(PY) -m uvicorn api.main:app --host $(HOST) --port 8000 --reload
 
 # For phones on the same Wi-Fi (native app / LAN demo): make api-lan  (binds all interfaces)
+# Live voice agent for Listen mode: VAPI_PUBLIC_KEY=<public key> make api-lan  (never commit the key)
 api-lan:
 	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 

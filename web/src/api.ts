@@ -971,3 +971,16 @@ export const demoApi = {
     return (await res.json()) as DemoReset;
   },
 };
+
+// ---------- Voice agent (GET /voice/config) ----------
+
+export interface VoiceConfig {
+  enabled: boolean;
+  provider: 'vapi' | null;
+  public_key: string | null;
+  tools: string[];
+}
+
+export const voiceApi = {
+  config: (signal?: AbortSignal) => getJson<VoiceConfig>('/voice/config', signal),
+};

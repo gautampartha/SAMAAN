@@ -1063,5 +1063,53 @@ that opens the right experience per disability, (5) a proper demo mode with real
 32. **CSR partners**: replace the placeholder catalogue in `web/src/rewards.ts` + `rewards.partners.*`
     strings once a real partner agrees; decide whether points move to the server (`User` table).
 
+## Live voice agent for blind travellers — Vapi (2026-10-25)
+
+The user supplied a Vapi key ("the app is not interacting with blind people"). It is a *public*
+key (Vapi's `/assistant` endpoint answers 401 to it), so it is used where public keys belong: in
+the phone's web SDK. It is never committed; the API reads it from `VAPI_PUBLIC_KEY` and hands it to
+the app through `GET /voice/config`, so changing the key needs no rebuild.
+
+### What was built
+- `api/routers/voice.py`: `GET /voice/config` (enabled + public key + tool names) and
+  `POST /voice/tools`, the webhook Vapi calls for the assistant's tools: `find_place` (→ `/search`
+  logic, returns the top match with lat/lon), `report_barrier` (creates a photo-less report at the
+  traveller's location, severity 3; falls back to a "Voice traveller" user), and acknowledgements
+  for `start_navigation` / `stop_navigation` / `repeat_step` / `where_am_i`, which the app acts on
+  itself. Always answers 200 with `results[]` as Vapi requires. 6 tests in `tests/test_voice_api.py`.
+- `web/src/vapi.ts`: builds a transient assistant (GPT-4o-mini, Deepgram nova-2 `en`/`hi`, Azure
+  voices en-IN Neerja / hi-IN Swara, tools pointing at `<API_URL>/voice/tools`, a system prompt that
+  forbids inventing places or directions), opens the call with `@vapi-ai/web`, and exposes `say`
+  (assistant voices navigation steps), `addContext` (system messages with the traveller's location
+  every 20 s and the current step) and tool-call events.
+- Listen screen: when `/voice/config` is enabled, the orb opens a live call instead of the on-device
+  recogniser ("Live voice agent" chip, "Tap to talk to SAMAAN", "SAMAAN is speaking…", End call).
+  The blind onboarding path starts the call automatically. Tool calls from the assistant start,
+  stop and repeat navigation in the app; navigation announcements are spoken by the assistant's
+  voice (speechSynthesis muted during a call). If the call fails, the screen falls back to
+  on-device speech with the error shown.
+
+### Run
+```
+VAPI_PUBLIC_KEY=<public key> make api-lan      # plus the cloudflared tunnel
+```
+The webhook must be reachable from Vapi's servers: through the tunnel URL baked into the app
+(`make ios-sync API_URL=<tunnel>`); on a LAN-only API the tools fail and the assistant says so.
+
+### Decisions taken alone
+- No private key is needed or stored; the assistant is transient (no dashboard setup).
+- Webhook is unauthenticated for the hackathon (it can only search and file pending reports).
+- Reports filed by voice use the traveller's user id when the app passed one, else the shared
+  "Voice traveller" user (trust 0.3, pending until validated).
+
+### Human tasks
+33. **Try the live call on the iPhone** (5 min): Listen → tap the orb → say "library" → "yes" →
+    walk / simulate → "where am I" → "report" → "parked scooter" → "goodbye". Check the API log for
+    `POST /voice/tools`. If the first call fails with a microphone error, allow the mic in
+    iOS Settings → SAMAAN.
+34. **Vapi dashboard**: confirm the public key's allowed origins (if restricted, add
+    `capacitor://localhost` and `http://localhost`) and watch the call logs during the demo; add
+    credit if the free tier runs out.
+
 ## Phase P10 — Eval, demo, polish
 _Rescoped after the pivot; starts after the pivot work._

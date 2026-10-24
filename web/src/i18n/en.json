@@ -916,7 +916,14 @@
     "you": "You",
     "sendReport": "Yes, send report: {{name}}",
     "typeInstead": "Type instead",
-    "noCancel": "No, cancel"
+    "noCancel": "No, cancel",
+    "voiceAgent": "Live voice agent",
+    "callConnecting": "Connecting to SAMAAN…",
+    "callOn": "Listening · tap to end the call",
+    "assistantSpeaking": "SAMAAN is speaking…",
+    "startCall": "Tap to talk to SAMAAN",
+    "endCall": "End call",
+    "callError": "Voice agent unavailable ({{message}}). Using on-device voice instead."
   },
   "contribute": {
     "title": "Contribute",
