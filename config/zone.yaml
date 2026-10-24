@@ -1,0 +1,76 @@
+# SAMAAN demo zone. All metric geometry is computed in `crs.metric` (EPSG:32643, UTM 43N).
+# Sources are recorded per value. Nothing here is a measured result.
+name: karkarduma
+display_name:
+  en: "Karkarduma Metro, East Delhi"
+  hi: "कड़कड़डूमा मेट्रो, पूर्वी दिल्ली"
+
+crs:
+  geographic: "EPSG:4326"
+  metric: "EPSG:32643"   # UTM zone 43N - covers Delhi
+
+# ~1.2 km square centred on Karkarduma metro. Confirmed by the team on 2026-10-24.
+bbox:
+  south: 28.6430
+  west: 77.2993
+  north: 28.6538
+  east: 77.3115
+center:
+  lat: 28.6484
+  lon: 77.3054
+
+osm:
+  # Overpass is blocked on the build machine's network, so the zone is fetched as raw
+  # OSM XML from the main API (bbox must stay < 0.25 sq deg and < 50k nodes).
+  source: osm_api
+  osm_api_url: "https://api.openstreetmap.org/api/0.6/map"
+  overpass_url: "https://overpass-api.de/api/interpreter"   # fallback, if reachable
+  raw_cache: "data/raw/karkarduma.osm"
+  attribution: "© OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)"
+  # P0 graph: walkable OSM ways (network_type=walk). P1 replaces this with synthesised
+  # left/right sidewalks + crossings (plan section 6.1).
+  network_type: walk
+
+basemap:
+  provider: openfreemap
+  style_url: "https://tiles.openfreemap.org/styles/liberty"
+  attribution: "© OpenFreeMap © OpenMapTiles Data from OpenStreetMap"
+
+# Anchors are snapped to graph nodes at seed time. `verified: false` = Human task
+# (confirm exit positions on site). Extra metro entrances found in OSM
+# (railway=subway_entrance / entrance=* within the bbox) are added automatically.
+anchors:
+  - id: metro_karkarduma
+    kind: metro
+    name:
+      en: "Karkarduma Metro Station"
+      hi: "कड़कड़डूमा मेट्रो स्टेशन"
+    lat: 28.6483664
+    lon: 77.3054302
+    source: "Nominatim lookup 2026-10-24 (Blue Line station node)"
+    verified: false
+
+anchor_discovery:
+  enabled: true
+  osm_tags:
+    - { key: railway, value: subway_entrance, kind: metro }
+    - { key: highway, value: bus_stop, kind: bus_stop }
+    - { key: amenity, value: hospital, kind: hospital }
+    - { key: amenity, value: school, kind: school }
+
+# The demo story. Everything under `demo` is synthetic and flagged as such in the DB.
+demo:
+  riya:
+    synthetic: true
+    origin_anchor: metro_karkarduma
+    # Destination is a real OSM node chosen at seed time ~800 m walking from the origin.
+    target_network_distance_m: 800
+    target_tolerance_m: 100
+    destination_label:
+      en: "Friend's house (demo)"
+      hi: "दोस्त का घर (डेमो)"
+    # Barriers placed on the shortest walking path, in order from the origin.
+    barriers:
+      - { class: steps_or_high_kerb, severity: 4, tags: [steps, two_steps], permanent: true }
+      - { class: steps_or_high_kerb, severity: 5, tags: [high_kerb, no_ramp], permanent: true }
+      - { class: parked_vehicle,     severity: 3, tags: [two_wheeler], permanent: false }

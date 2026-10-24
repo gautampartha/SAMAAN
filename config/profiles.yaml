@@ -1,0 +1,110 @@
+# User profiles for routing (plan sections 3d, 6.6).
+#
+# RULE: every number from an Indian standard carries `source:` with a citation, or
+# `TODO: cite` until a human confirms it from the document:
+#   Harmonised Guidelines and Standards for Universal Accessibility in India 2021 (MoHUA).
+# Values marked `team_estimate` are our own routing-design parameters, not standards.
+# A null value means "not yet confirmed; code must treat as unknown".
+
+standards:
+  # Human task: fill these from the Harmonised Guidelines 2021 and replace the TODO.
+  max_ramp_gradient_ratio:
+    value: null            # e.g. "1:12" expressed as 0.0833
+    source: "TODO: cite Harmonised Guidelines 2021, ramp gradient"
+  min_clear_width_m:
+    value: null
+    source: "TODO: cite Harmonised Guidelines 2021, clear footpath width"
+  max_kerb_height_without_ramp_m:
+    value: null
+    source: "TODO: cite Harmonised Guidelines 2021 / IRC:103, kerb height"
+  kerb_ramp_min_width_m:
+    value: null
+    source: "TODO: cite Harmonised Guidelines 2021, kerb ramp width"
+
+# Risk tolerance = how unknown (never observed) edges are costed (plan 6.6).
+unknown_multiplier:
+  strict: 5.0
+  balanced: 1.5
+  relaxed: 1.0
+  source: team_estimate
+
+# Temporary barriers: above this P(present) they are treated as impassable for
+# profiles where the class is impassable; below it, penalty is scaled by P.
+temporary_impassable_probability: 0.6   # team_estimate
+
+profiles:
+  walker:
+    name: { en: "Walker", hi: "पैदल यात्री" }
+    speed_m_s:
+      value: 1.3
+      source: "TODO: cite (placeholder walking speed; replace with cited value)"
+    rules: {}   # ignores barriers; used by the `shortest` route mode
+
+  wheelchair_manual:
+    name: { en: "Manual wheelchair", hi: "हाथ से चलने वाली व्हीलचेयर" }
+    speed_m_s:
+      value: 0.9
+      source: "TODO: cite (placeholder; replace with cited value)"
+    rules:
+      curb_ramp:          { impassable_at_or_above: null, penalty_seconds_by_severity: {} }
+      steps_or_high_kerb: { impassable_at_or_above: 2, penalty_seconds_by_severity: { 1: 30 } }
+      broken_surface:     { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 5, 2: 15, 3: 45 } }
+      open_drain:         { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 15, 2: 45 } }
+      fixed_obstacle:     { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 60 } }
+      parked_vehicle:     { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 30, 3: 90 } }
+      vendor_encroachment: { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 30, 3: 90 } }
+      bike_barrier:       { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 20, 2: 60 } }
+      no_footpath:        { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 20, 2: 40, 3: 90, 4: 180 } }
+      footpath_end:       { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 20, 2: 40, 3: 90, 4: 180 } }
+      missing_ramp_at_crossing: { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 30, 2: 60 } }
+      waterlogging:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 30, 3: 60 } }
+      construction:       { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 30, 2: 90 } }
+      lift_out_of_service: { impassable_at_or_above: 1, penalty_seconds_by_severity: {} }
+      foot_overbridge_stairs_only: { impassable_at_or_above: 1, penalty_seconds_by_severity: {} }
+    rules_source: team_estimate
+
+  elderly_walking_aid:
+    name: { en: "Elderly, with walking aid", hi: "बुज़ुर्ग, सहारे के साथ" }
+    speed_m_s:
+      value: 0.8
+      source: "TODO: cite (placeholder; replace with cited value)"
+    rules:
+      curb_ramp:          { impassable_at_or_above: null, penalty_seconds_by_severity: {} }
+      steps_or_high_kerb: { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 30, 3: 60 } }
+      broken_surface:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 15, 3: 30, 4: 60 } }
+      open_drain:         { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 30, 3: 60 } }
+      fixed_obstacle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 10, 3: 30, 4: 60 } }
+      parked_vehicle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 15, 3: 45, 4: 90 } }
+      vendor_encroachment: { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 15, 3: 45, 4: 90 } }
+      bike_barrier:       { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60 } }
+      no_footpath:        { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60, 5: 120 } }
+      footpath_end:       { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60, 5: 120 } }
+      missing_ramp_at_crossing: { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 30, 4: 60 } }
+      waterlogging:       { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 90 } }
+      construction:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 20, 2: 40, 3: 90 } }
+      lift_out_of_service: { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 60, 2: 120 } }
+      foot_overbridge_stairs_only: { impassable_at_or_above: 3, penalty_seconds_by_severity: { 1: 60, 2: 120 } }
+    rules_source: team_estimate
+
+  pram:
+    name: { en: "Pram / stroller", hi: "बच्चा गाड़ी" }
+    speed_m_s:
+      value: 1.1
+      source: "TODO: cite (placeholder; replace with cited value)"
+    rules:
+      curb_ramp:          { impassable_at_or_above: null, penalty_seconds_by_severity: {} }
+      steps_or_high_kerb: { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 45 } }
+      broken_surface:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 10, 3: 30, 4: 60 } }
+      open_drain:         { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 30, 3: 60 } }
+      fixed_obstacle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 10, 3: 30, 4: 60 } }
+      parked_vehicle:     { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 15, 3: 45, 4: 90 } }
+      vendor_encroachment: { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 5, 2: 15, 3: 45, 4: 90 } }
+      bike_barrier:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 10, 2: 30, 3: 60 } }
+      no_footpath:        { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60, 5: 120 } }
+      footpath_end:       { impassable_at_or_above: null, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 60, 5: 120 } }
+      missing_ramp_at_crossing: { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 30, 4: 60 } }
+      waterlogging:       { impassable_at_or_above: 5, penalty_seconds_by_severity: { 1: 10, 2: 20, 3: 40, 4: 90 } }
+      construction:       { impassable_at_or_above: 4, penalty_seconds_by_severity: { 1: 20, 2: 40, 3: 90 } }
+      lift_out_of_service: { impassable_at_or_above: 2, penalty_seconds_by_severity: { 1: 120 } }
+      foot_overbridge_stairs_only: { impassable_at_or_above: 2, penalty_seconds_by_severity: { 1: 120 } }
+    rules_source: team_estimate

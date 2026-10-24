@@ -1,0 +1,75 @@
+{
+  "app": { "name": "SAMAAN", "tagline": "Walk for All" },
+  "skip": { "toContent": "Skip to main content" },
+  "header": { "zoneLabel": "Zone", "zoneUnknown": "Zone unavailable" },
+  "lang": { "label": "Language", "en": "English", "hi": "हिन्दी" },
+  "theme": { "highContrast": "High contrast" },
+  "panels": { "legend": "Layers & legend", "barriers": "Barrier list", "close": "Close" },
+  "layers": {
+    "title": "Layers",
+    "footpaths": "Footpaths",
+    "barriers": "Barriers",
+    "coverage": "Image coverage",
+    "anchors": "Landmarks",
+    "demo": "Demo route"
+  },
+  "state": { "clear": "Clear", "blocked": "Blocked", "unknown": "Unknown" },
+  "legend": {
+    "title": "Legend",
+    "clear": "solid thick green line",
+    "blocked": "dotted red line",
+    "unknown": "thin dashed grey line",
+    "barrier": "Barrier: circle size grows with severity; the number is the severity",
+    "anchor": "Landmark: white circle with a dark ring",
+    "demoPath": "Demo route: wide purple dashed line with a white edge",
+    "demoOrigin": "Origin (A)",
+    "demoDestination": "Destination (B)",
+    "coverageObserved": "Observed footpath (blue band)",
+    "coverageUnobserved": "Not yet observed (faint grey band)"
+  },
+  "severity": { "label": "Severity", "1": "Very low", "2": "Low", "3": "Medium", "4": "High", "5": "Very high" },
+  "barrierClass": {
+    "steps_or_high_kerb": "Steps or high kerb",
+    "parked_vehicle": "Parked vehicle",
+    "open_drain": "Open drain",
+    "curb_ramp": "Kerb ramp",
+    "broken_surface": "Broken surface",
+    "fixed_obstacle": "Fixed obstacle",
+    "vendor_encroachment": "Vendor encroachment",
+    "bike_barrier": "Bike barrier"
+  },
+  "anchorKind": { "metro": "Metro station", "bus_stop": "Bus stop", "hospital": "Hospital", "school": "School" },
+  "demo": { "origin": "Origin", "destination": "Destination", "path": "Demo route", "length": "Length" },
+  "popup": {
+    "class": "Type",
+    "kind": "Kind",
+    "status": "Status",
+    "permanence": "Permanence",
+    "permanent": "Permanent",
+    "temporary": "Temporary",
+    "tags": "Tags",
+    "confidence": "Confidence",
+    "verified": "Verified",
+    "unverified": "Not verified",
+    "close": "Close popup"
+  },
+  "status": { "active": "Active", "fixed": "Fixed", "expired": "Expired" },
+  "badge": { "synthetic": "Synthetic demo data" },
+  "list": {
+    "title": "Barrier list",
+    "count_one": "{{count}} barrier",
+    "count_other": "{{count}} barriers",
+    "empty": "No barriers to show.",
+    "hint": "Select a barrier to move the map to it.",
+    "show": "Show {{name}} on the map"
+  },
+  "load": {
+    "loading": "Loading map data…",
+    "loaded": "Loaded {{barriers}} barriers and {{footpaths}} footpath segments.",
+    "partial": "Some layers could not be loaded: {{layers}}.",
+    "error": "Could not reach the SAMAAN API. Showing an empty map.",
+    "basemap": "The basemap could not be loaded."
+  },
+  "map": { "label": "Map of accessible walking routes", "zoomIn": "Zoom in", "zoomOut": "Zoom out" },
+  "units": { "m": "m" }
+}

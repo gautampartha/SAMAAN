@@ -1,0 +1,83 @@
+# Barrier taxonomy (plan section 3). Project Sidewalk names are kept where they exist so
+# results can be compared directly. Class ids are stable and used in the DB and YOLO labels.
+version: 1
+severity_scale:
+  description:
+    en: "1 = minor inconvenience, 5 = completely blocks the profile"
+    hi: "1 = मामूली असुविधा, 5 = रास्ता पूरी तरह बंद"
+  levels:
+    1: { en: "Minor",     hi: "मामूली" }
+    2: { en: "Noticeable", hi: "ध्यान देने योग्य" }
+    3: { en: "Difficult", hi: "मुश्किल" }
+    4: { en: "Very difficult", hi: "बहुत मुश्किल" }
+    5: { en: "Impassable", hi: "पार नहीं किया जा सकता" }
+
+# 3a. Detector classes (trained). yolo_index is the class index in the YOLO dataset.
+detector_classes:
+  - id: curb_ramp
+    yolo_index: 0
+    name: { en: "Kerb ramp", hi: "कर्ब रैम्प" }
+    sidewalk_equivalent: CurbRamp
+    positive: true          # a good thing; needed to infer missing ramps
+    temporary: false
+    example: "Ramp at a crossing"
+  - id: steps_or_high_kerb
+    yolo_index: 1
+    name: { en: "Steps / high kerb", hi: "सीढ़ियाँ / ऊँचा कर्ब" }
+    sidewalk_equivalent: NoCurbRamp
+    temporary: false
+    example: "Footpath raised well above the road with no ramp; steps at shop fronts"
+  - id: broken_surface
+    yolo_index: 2
+    name: { en: "Broken surface", hi: "टूटी सतह" }
+    sidewalk_equivalent: SurfaceProblem
+    temporary: false
+    example: "Broken or missing slabs, uprooted tiles"
+  - id: open_drain
+    yolo_index: 3
+    name: { en: "Open drain", hi: "खुला नाला" }
+    sidewalk_equivalent: SurfaceProblem
+    temporary: false
+    example: "Open nala, missing or broken drain cover"
+  - id: fixed_obstacle
+    yolo_index: 4
+    name: { en: "Fixed obstacle", hi: "स्थायी रुकावट" }
+    sidewalk_equivalent: Obstacle
+    temporary: false
+    example: "Electric pole, transformer box, tree trunk, signboard in the path"
+  - id: parked_vehicle
+    yolo_index: 5
+    name: { en: "Parked vehicle", hi: "खड़ी गाड़ी" }
+    sidewalk_equivalent: Obstacle
+    temporary: true
+    example: "Two-wheelers, cars or autos parked on the footpath"
+  - id: vendor_encroachment
+    yolo_index: 6
+    name: { en: "Vendor encroachment", hi: "रेहड़ी / दुकान का कब्ज़ा" }
+    sidewalk_equivalent: null
+    temporary: true
+    example: "Stalls and carts occupying the footpath"
+  - id: bike_barrier
+    yolo_index: 7
+    name: { en: "Bike barrier", hi: "बाइक रोकने वाली बाड़" }
+    sidewalk_equivalent: null
+    temporary: false
+    example: "Metal chicanes or bollards at footpath entries that also block wheelchairs"
+
+# 3b. Report-only / inferred classes (never trained).
+other_classes:
+  - { id: no_footpath,                 name: { en: "No footpath", hi: "फुटपाथ नहीं" },                       origin: inferred_or_report, temporary: false }
+  - { id: footpath_end,                name: { en: "Footpath ends", hi: "फुटपाथ ख़त्म" },                  origin: inferred_or_report, temporary: false }
+  - { id: missing_ramp_at_crossing,    name: { en: "Missing ramp at crossing", hi: "क्रॉसिंग पर रैम्प नहीं" }, origin: inferred, temporary: false }
+  - { id: waterlogging,                name: { en: "Waterlogging", hi: "जलभराव" },                        origin: report, temporary: true }
+  - { id: construction,                name: { en: "Construction", hi: "निर्माण कार्य" },                   origin: report, temporary: true }
+  - { id: lift_out_of_service,         name: { en: "Lift out of service", hi: "लिफ़्ट बंद" },               origin: report, temporary: true }
+  - { id: foot_overbridge_stairs_only, name: { en: "Foot overbridge, stairs only", hi: "सिर्फ़ सीढ़ी वाला पुल" }, origin: osm_or_report, temporary: false }
+
+# Tags (Project Sidewalk style sub-descriptors) plus India-specific additions.
+tags:
+  sidewalk: [parked_car, pole, narrow, cracks, tree_root, uneven, missing_tactile, no_landing, too_steep]
+  india: [two_wheeler, auto_rickshaw, cattle, transformer_box, construction_debris, steps, two_steps, high_kerb, no_ramp, cart, stall, chicane, bollard]
+
+# Default expiry for temporary barriers not seen again (plan 3c). team_estimate.
+temporary_expiry_days: 14

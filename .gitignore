@@ -1,0 +1,26 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Data (raw imagery and OSM downloads are never committed)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*.sqlite
+data/processed/*.sqlite-journal
+data/processed/*.osm
+*.pt
+runs/
+
+# Web
+web/node_modules/
+web/dist/
+web/.vite/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

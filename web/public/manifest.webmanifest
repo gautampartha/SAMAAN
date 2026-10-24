@@ -1,0 +1,17 @@
+{
+  "name": "SAMAAN - Walk for All",
+  "short_name": "SAMAAN",
+  "description": "Accessible walking routes on Indian footpaths. सबके लिए रास्ता।",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0b5fa5",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

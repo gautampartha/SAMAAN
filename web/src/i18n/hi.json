@@ -1,0 +1,75 @@
+{
+  "app": { "name": "समान", "tagline": "सबके लिए रास्ता" },
+  "skip": { "toContent": "मुख्य सामग्री पर जाएँ" },
+  "header": { "zoneLabel": "क्षेत्र", "zoneUnknown": "क्षेत्र की जानकारी उपलब्ध नहीं" },
+  "lang": { "label": "भाषा", "en": "English", "hi": "हिन्दी" },
+  "theme": { "highContrast": "उच्च कंट्रास्ट" },
+  "panels": { "legend": "परतें और संकेत-सूची", "barriers": "बाधाओं की सूची", "close": "बंद करें" },
+  "layers": {
+    "title": "परतें",
+    "footpaths": "फुटपाथ",
+    "barriers": "बाधाएँ",
+    "coverage": "छवि कवरेज",
+    "anchors": "प्रमुख स्थान",
+    "demo": "डेमो मार्ग"
+  },
+  "state": { "clear": "खुला", "blocked": "अवरुद्ध", "unknown": "अज्ञात" },
+  "legend": {
+    "title": "संकेत-सूची",
+    "clear": "ठोस मोटी हरी रेखा",
+    "blocked": "बिंदीदार लाल रेखा",
+    "unknown": "पतली खंडित धूसर रेखा",
+    "barrier": "बाधा: गंभीरता बढ़ने पर वृत्त बड़ा होता है; अंक गंभीरता दर्शाता है",
+    "anchor": "प्रमुख स्थान: गहरे घेरे वाला सफ़ेद वृत्त",
+    "demoPath": "डेमो मार्ग: सफ़ेद किनारे वाली चौड़ी बैंगनी खंडित रेखा",
+    "demoOrigin": "प्रारंभ (A)",
+    "demoDestination": "गंतव्य (B)",
+    "coverageObserved": "देखा गया फुटपाथ (नीली पट्टी)",
+    "coverageUnobserved": "अभी तक नहीं देखा गया (हल्की धूसर पट्टी)"
+  },
+  "severity": { "label": "गंभीरता", "1": "बहुत कम", "2": "कम", "3": "मध्यम", "4": "अधिक", "5": "बहुत अधिक" },
+  "barrierClass": {
+    "steps_or_high_kerb": "सीढ़ियाँ या ऊँचा कर्ब",
+    "parked_vehicle": "खड़ा वाहन",
+    "open_drain": "खुला नाला",
+    "curb_ramp": "कर्ब रैंप",
+    "broken_surface": "टूटी हुई सतह",
+    "fixed_obstacle": "स्थायी रुकावट",
+    "vendor_encroachment": "विक्रेता अतिक्रमण",
+    "bike_barrier": "साइकिल अवरोधक"
+  },
+  "anchorKind": { "metro": "मेट्रो स्टेशन", "bus_stop": "बस स्टॉप", "hospital": "अस्पताल", "school": "स्कूल" },
+  "demo": { "origin": "प्रारंभ", "destination": "गंतव्य", "path": "डेमो मार्ग", "length": "लंबाई" },
+  "popup": {
+    "class": "प्रकार",
+    "kind": "श्रेणी",
+    "status": "स्थिति",
+    "permanence": "अवधि",
+    "permanent": "स्थायी",
+    "temporary": "अस्थायी",
+    "tags": "टैग",
+    "confidence": "विश्वसनीयता",
+    "verified": "सत्यापित",
+    "unverified": "असत्यापित",
+    "close": "पॉपअप बंद करें"
+  },
+  "status": { "active": "सक्रिय", "fixed": "ठीक किया गया", "expired": "समाप्त" },
+  "badge": { "synthetic": "कृत्रिम डेमो डेटा" },
+  "list": {
+    "title": "बाधाओं की सूची",
+    "count_one": "{{count}} बाधा",
+    "count_other": "{{count}} बाधाएँ",
+    "empty": "दिखाने के लिए कोई बाधा नहीं है।",
+    "hint": "मानचित्र को उस स्थान पर ले जाने के लिए कोई बाधा चुनें।",
+    "show": "{{name}} को मानचित्र पर दिखाएँ"
+  },
+  "load": {
+    "loading": "मानचित्र डेटा लोड हो रहा है…",
+    "loaded": "{{barriers}} बाधाएँ और {{footpaths}} फुटपाथ खंड लोड हुए।",
+    "partial": "कुछ परतें लोड नहीं हो सकीं: {{layers}}।",
+    "error": "SAMAAN API से संपर्क नहीं हो सका। खाली मानचित्र दिखाया जा रहा है।",
+    "basemap": "आधार मानचित्र लोड नहीं हो सका।"
+  },
+  "map": { "label": "सुलभ पैदल मार्गों का मानचित्र", "zoomIn": "ज़ूम इन", "zoomOut": "ज़ूम आउट" },
+  "units": { "m": "मी" }
+}

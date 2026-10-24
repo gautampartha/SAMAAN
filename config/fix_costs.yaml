@@ -1,0 +1,20 @@
+# Rough fix-cost ranges in INR lakh, used only for "reach gained per lakh" ranking (plan 6.7).
+# Every value is an ESTIMATE and must be labelled as such in the UI.
+# Human task (P8): fill in rough ranges with a source note (municipal schedule of rates,
+# contractor quote, or expert guess) and replace each TODO.
+currency: INR
+unit: lakh
+label: { en: "estimate", hi: "अनुमान" }
+costs:
+  curb_ramp:                   { min: null, max: null, source: "TODO: estimate (install kerb ramp)" }
+  steps_or_high_kerb:          { min: null, max: null, source: "TODO: estimate (replace steps with ramp / lower kerb)" }
+  broken_surface:              { min: null, max: null, source: "TODO: estimate (re-lay slabs per 10 m)" }
+  open_drain:                  { min: null, max: null, source: "TODO: estimate (drain cover)" }
+  fixed_obstacle:              { min: null, max: null, source: "TODO: estimate (relocate pole / box)" }
+  parked_vehicle:              { min: null, max: null, source: "TODO: estimate (enforcement / bollards)" }
+  vendor_encroachment:         { min: null, max: null, source: "TODO: estimate (vending zone relocation)" }
+  bike_barrier:                { min: null, max: null, source: "TODO: estimate (replace chicane with accessible gate)" }
+  no_footpath:                 { min: null, max: null, source: "TODO: estimate (build footpath per 100 m)" }
+  footpath_end:                { min: null, max: null, source: "TODO: estimate (extend footpath)" }
+  missing_ramp_at_crossing:    { min: null, max: null, source: "TODO: estimate (kerb ramp pair)" }
+  foot_overbridge_stairs_only: { min: null, max: null, source: "TODO: estimate (lift retrofit)" }
