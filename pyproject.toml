@@ -16,8 +16,11 @@ dependencies = [
     "sqlmodel>=0.0.22",
     "pyyaml>=6.0",
     "requests>=2.32",
-    "numpy>=1.26",
+    "numpy>=1.26,<2",  # torch 2.2 wheels (last for Intel macOS) are built against NumPy 1.x
+    "pandas>=2.0,<2.3",  # pandas 3 requires NumPy 2
     "python-multipart>=0.0.9",
+    "ultralytics>=8.3",
+    "pillow>=10",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +40,10 @@ packages = ["common", "pipeline", "pipeline.graph", "pipeline.seed", "pipeline.i
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = [
+    "ignore:Conversion of an array with ndim:DeprecationWarning",  # pyproj scalar path on NumPy 1.26
+    "ignore:Using `httpx` with `starlette.testclient`:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100

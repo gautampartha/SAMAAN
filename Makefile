@@ -4,7 +4,7 @@ PY      := .venv/bin/python
 UV      := uv
 DB      := data/processed/samaan.sqlite
 
-.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary api test lint web web-install clean-db help
+.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer api test lint web web-install clean-db help
 
 help:
 	@echo "make setup        create .venv (Python 3.11) and install deps"
@@ -15,6 +15,10 @@ help:
 	@echo "make seed         synthetic barriers/coverage into $(DB) (builds the graph if missing) [synthetic=true]"
 	@echo "make ingest-mapillary   MAPILLARY_TOKEN=... download zone images (add DOWNLOAD=1 for thumbnails)"
 	@echo "make coverage     recompute image coverage + segment states"
+	@echo "make ml-smoke     synthetic end-to-end check of split/train/eval/domain-gap/infer (never eval/results)"
+	@echo "make train NAME=<dataset> [EPOCHS=60]     train YOLO on data/labels/<dataset>"
+	@echo "make eval NAME=<dataset> WEIGHTS=path.pt   per-class P/R on the held-out street -> eval/results/"
+	@echo "make infer WEIGHTS=path.pt                 detections for all stored zone images"
 	@echo "make api          serve FastAPI on http://127.0.0.1:8000 (docs at /docs)"
 	@echo "make test         run pytest"
 	@echo "make web-install  npm install in web/"
@@ -46,6 +50,24 @@ ingest-mapillary:
 
 coverage:
 	$(PY) -m pipeline.coverage.run
+
+ml-smoke:
+	$(PY) -m ml.smoke_dataset --name smoke --n 24
+	$(PY) -m ml.dataset import data/labels/smoke_export --name smoke --synthetic
+	$(PY) -m ml.dataset split --name smoke --test-street gamma-lane
+	$(PY) -m ml.train --name smoke --run-name smoke --epochs 2 --imgsz 160 --batch 8 --device cpu
+	$(PY) -m ml.eval --name smoke --weights ml/runs/smoke/weights/best.pt --allow-synthetic --device cpu
+	$(PY) -m ml.domain_gap --name smoke --ours ml/runs/smoke/weights/best.pt --allow-synthetic --device cpu
+	@echo "smoke results are in data/processed/smoke_results/ (synthetic; NOT eval/results)"
+
+train:
+	$(PY) -m ml.train --name $(NAME) $(if $(EPOCHS),--epochs $(EPOCHS),)
+
+eval:
+	$(PY) -m ml.eval --name $(NAME) --weights $(WEIGHTS)
+
+infer:
+	$(PY) -m ml.infer --weights $(WEIGHTS)
 
 api:
 	$(PY) -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload

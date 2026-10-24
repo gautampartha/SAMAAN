@@ -26,3 +26,9 @@ web/.vite/
 .vscode/
 data/processed/*.geojson
 data/processed/graph_validation.md
+ml/runs/
+data/labels/*/images/
+data/labels/*/*.cache
+data/processed/smoke*/
+*.pt
+data/labels/smoke*/

@@ -16,6 +16,7 @@ severity_scale:
 detector_classes:
   - id: curb_ramp
     yolo_index: 0
+    aliases: ["CurbRamp", "kerb ramp", "kerb_ramp", "ramp"]
     name: { en: "Kerb ramp", hi: "कर्ब रैंप" }
     sidewalk_equivalent: CurbRamp
     positive: true          # a good thing; needed to infer missing ramps
@@ -23,42 +24,49 @@ detector_classes:
     example: "Ramp at a crossing"
   - id: steps_or_high_kerb
     yolo_index: 1
+    aliases: ["NoCurbRamp", "steps", "stairs", "high kerb", "high_kerb", "step"]
     name: { en: "Steps / high kerb", hi: "सीढ़ियाँ / ऊँचा कर्ब" }
     sidewalk_equivalent: NoCurbRamp
     temporary: false
     example: "Footpath raised well above the road with no ramp; steps at shop fronts"
   - id: broken_surface
     yolo_index: 2
+    aliases: ["SurfaceProblem", "broken surface", "surface problem", "pothole"]
     name: { en: "Broken surface", hi: "टूटी सतह" }
     sidewalk_equivalent: SurfaceProblem
     temporary: false
     example: "Broken or missing slabs, uprooted tiles"
   - id: open_drain
     yolo_index: 3
+    aliases: ["open drain", "drain", "nala"]
     name: { en: "Open drain", hi: "खुला नाला" }
     sidewalk_equivalent: SurfaceProblem
     temporary: false
     example: "Open nala, missing or broken drain cover"
   - id: fixed_obstacle
     yolo_index: 4
+    aliases: ["Obstacle", "obstacle", "pole", "fixed obstacle"]
     name: { en: "Fixed obstacle", hi: "स्थायी रुकावट" }
     sidewalk_equivalent: Obstacle
     temporary: false
     example: "Electric pole, transformer box, tree trunk, signboard in the path"
   - id: parked_vehicle
     yolo_index: 5
+    aliases: ["parked vehicle", "vehicle", "parked_car", "two_wheeler"]
     name: { en: "Parked vehicle", hi: "खड़ी गाड़ी" }
     sidewalk_equivalent: Obstacle
     temporary: true
     example: "Two-wheelers, cars or autos parked on the footpath"
   - id: vendor_encroachment
     yolo_index: 6
+    aliases: ["vendor", "stall", "cart", "vendor encroachment"]
     name: { en: "Vendor encroachment", hi: "रेहड़ी / दुकान का कब्ज़ा" }
     sidewalk_equivalent: null
     temporary: true
     example: "Stalls and carts occupying the footpath"
   - id: bike_barrier
     yolo_index: 7
+    aliases: ["bike barrier", "chicane", "bollard", "bollards"]
     name: { en: "Bike barrier", hi: "बाइक रोकने वाली बाड़" }
     sidewalk_equivalent: null
     temporary: false

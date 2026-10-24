@@ -122,6 +122,9 @@ class Detection(SQLModel, table=True):
     assigned_edge_id: int | None = Field(default=None, index=True)
     side: str | None = None
     snap_confidence: float | None = None
+    model: str | None = None  # weights file / run name that produced it
+    image_w: int | None = None  # pixel size the bbox refers to
+    image_h: int | None = None
     synthetic: bool = False
 
 

@@ -309,5 +309,97 @@ seeded state. That is expected: real coverage arrives with the human tasks below
 
 ---
 
-## Phase P3 — Detector
+## Phase P3 — Detector (2026-10-24) — pipeline done, numbers pending labels
+
+### Plan
+No labelled Indian images exist yet, so P3 delivers the complete, tested pipeline and the
+labelling guide, and the numbers come only from the human labelling task (plan 6.3):
+dataset import from a Roboflow/CVAT YOLO export with a manifest (street per image from the
+capture session id, Mapillary sequence, or nearest OSM road name), **split by street** with one
+whole held-out test street, YOLO nano/small training with India-suited augmentation from
+`config/train.yaml`, our own IoU-matched per-class precision/recall + AP50 metrics (unit-tested),
+`ml/eval.py` writing to `eval/results/` only for real data, `ml/domain_gap.py` comparing a
+non-Indian baseline (RampNet weights if usable, else a non-Indian-trained model) against ours on
+the same test street through a class map, `ml/infer.py` batch inference into the `detection`
+table, and a synthetic smoke dataset (`make ml-smoke`) that exercises split → train → eval →
+domain gap → infer end to end while never touching `eval/results/`.
+
+### What was built
+- `docs/labelling_guide.md`: per-class "box this / not this / severity cues" table for the 8
+  detector classes, severity in one sentence, boxing rules, QA (double labelling of the first 50,
+  10 % second pass), Roboflow/CVAT export + import steps, street-naming rule.
+- `ml/dataset.py`: `import` reads a YOLO export (Roboflow/CVAT layouts), maps class names to the
+  taxonomy via ids, Project Sidewalk names and `aliases` (now in `config/taxonomy.yaml`), splits
+  `class_3` severity suffixes into `severity_counts.json`, drops unknown classes with a count,
+  matches filenames to the `image` table for lat/lon and street (session id → Mapillary sequence
+  → nearest named OSM road → filename pattern → "unknown"), writes `manifest.csv` with a
+  `synthetic` column. `split` keeps **whole streets** on one side: one held-out test street
+  (given, or the one closest to 15 % of boxes), whole-street val, rest train; writes
+  `data.yaml`, `train/val/test.txt`, `splits.json`.
+- `ml/metrics.py`: greedy IoU matching per class, P/R at the configured confidence, AP50 with
+  all-point interpolation, `None` (never 0) for classes without ground truth or predictions,
+  markdown table. Unit-tested on toy boxes.
+- `ml/train.py` (`make train NAME=…`): Ultralytics YOLO11n by default, augmentation from
+  `config/train.yaml` (brightness/saturation jitter, small rotations, scale, shear, mosaic, mixup,
+  copy-paste, random erasing for partial occlusion), deterministic seed, runs under `ml/runs/`.
+- `ml/eval.py` (`make eval NAME=… WEIGHTS=…`): predicts on the test street, computes our metrics,
+  writes `eval/results/detector_<name>_<tag>.{json,md}` with provenance. Refuses synthetic data.
+- `ml/domain_gap.py`: same test street, baseline weights + class map from
+  `config/domain_gap.yaml` (RampNet or a non-Indian-trained model, human task), side-by-side
+  table; classes the baseline lacks are printed as "not in baseline".
+- `ml/infer.py` (`make infer WEIGHTS=…`): detections for every stored real image into the
+  `detection` table (pixel xyxy, image size, model name), idempotent per model.
+- `ml/smoke_dataset.py` + `make ml-smoke`: 24 synthetic shape images over 3 fake streets →
+  import (flagged synthetic) → split (test street gamma-lane) → 2 CPU epochs → eval → domain gap.
+  Verified: it runs end to end and writes only to `data/processed/smoke_results/`;
+  `eval/results/` stayed empty. Inference was checked on a scratch DB copy (rows written,
+  rerun skips done images). The smoke numbers are meaningless by design and are not reported.
+- Dependencies: ultralytics 8.4, torch 2.2.2 (the last build for Intel macOS, CPU only on this
+  laptop), NumPy pinned < 2 and pandas < 2.3 to match it.
+- Tests: 77 passing (metrics, class lookup, import/severity/manifest, street split invariants,
+  filename street parsing, synthetic-results guard, plus everything earlier).
+
+### Numbers
+None. There are no labelled Indian images yet, so there is no detector result. The pitch gets
+its detector numbers only from `eval/results/detector_karkarduma_v1_ours.md` after task 11.
+
+### Decisions taken alone
+- Severity is a per-box attribute; if the tool cannot export attributes, a `_<1-5>` class-name
+  suffix is accepted and split on import.
+- Street for Mapillary frames = sequence id (one drive/walk), which is the right unit to avoid
+  leakage even when the sequence crosses two streets.
+- Images matched to no DB row and with no street in the filename go to a street called
+  "unknown", which is always placed in train and never chosen as the test street.
+- YOLO11n is the default model (nano, CPU-trainable); switch to `yolo11s.pt` in
+  `config/train.yaml` if a GPU is available.
+
+### Open issues
+- Training on this laptop is CPU-only (Intel Mac, no MPS/CUDA): 600–1000 images × 60 epochs at
+  640 px will take hours. Use a Colab/Kaggle GPU or a teammate's Apple-Silicon/NVIDIA machine:
+  copy `data/labels/<name>/` there, run `make train`, copy `best.pt` back.
+- Ultralytics' built-in `val` mAP is not used for the pitch; our own matcher is, so eval and
+  domain gap share one definition. Both can be reported if asked.
+- Haze/blur augmentation beyond HSV/erasing would need `albumentations` (Ultralytics picks it
+  up automatically if installed); not added.
+
+### Human tasks (P3)
+11. **Label 600–1000 images** (team, 4–6 h total). Follow `docs/labelling_guide.md`. Use the own
+    photo-walk uploads first (filenames `<id>.jpg` under `data/raw/own/<session>/`), then
+    Mapillary thumbnails. Export YOLO format, then:
+    `python -m ml.dataset import <export_dir> --name karkarduma_v1` and
+    `python -m ml.dataset split --name karkarduma_v1` (check the chosen test street in
+    `data/labels/karkarduma_v1/splits.json`; pass `--test-street` to pick another whole street).
+12. **Train and evaluate** (GPU machine, ~1 h): `make train NAME=karkarduma_v1` then
+    `make eval NAME=karkarduma_v1 WEIGHTS=ml/runs/karkarduma_v1/weights/best.pt`; commit the
+    files that appear in `eval/results/`. Then `make infer WEIGHTS=…` on the laptop with the DB.
+13. **Baseline for the domain gap** (30 min): check github.com/ProjectSidewalk for RampNet
+    weights that Ultralytics can load, note URL + licence + class names in
+    `config/domain_gap.yaml`; if unusable, label ~200 non-Indian Mapillary images with the shared
+    classes, train with `make train NAME=non_indian_v1`, and set those weights as the baseline.
+    Then `python -m ml.domain_gap --name karkarduma_v1 --ours …`.
+14. **Example photos for the guide** (20 min): two per class into `docs/labelling_examples/`.
+
+---
+
+## Phase P4 — Geolocate & snap
 _Not started. Waiting for "go"._

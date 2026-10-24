@@ -1,0 +1,15 @@
+# Domain-gap experiment (plan 6.3): a non-Indian baseline evaluated on our Indian test street.
+# Option A: RampNet (Project Sidewalk) kerb-ramp model weights, if downloadable and loadable
+#           by Ultralytics. Human task: check github.com/ProjectSidewalk for the weights and
+#           licence; record the URL and the class names below.
+# Option B: a model trained only on non-Indian Mapillary images with the shared classes
+#           (humans label ~200 non-Indian images with the same taxonomy; train with ml/train.py).
+baseline:
+  name: "TODO: RampNet or non-Indian Mapillary model"
+  weights: null              # path to .pt; null = experiment cannot run yet
+  source: "TODO: cite weights URL + licence"
+  # baseline class name -> SAMAAN taxonomy id (only shared classes are compared)
+  class_map:
+    curb_ramp: curb_ramp
+    # missing_curb_ramp: steps_or_high_kerb   # TODO: confirm RampNet's class names
+shared_classes_note: "Classes absent from the baseline are reported as 'not in baseline', never as 0."

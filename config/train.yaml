@@ -1,0 +1,35 @@
+# Detector training (plan 6.3). All values team_estimate; tune after the first real run.
+model: "yolo11n.pt"          # nano; use yolo11s.pt if the GPU/time allows
+imgsz: 640
+epochs: 60
+batch: 16
+patience: 15
+seed: 42
+device: ""                   # "" = auto (mps on Apple Silicon, cuda if present, else cpu)
+workers: 4
+# Augmentation suited to Indian street conditions: strong brightness/haze variation, blur,
+# partial occlusion (mosaic/mixup/copy-paste), small rotations from handheld capture.
+augment:
+  hsv_h: 0.015
+  hsv_s: 0.6
+  hsv_v: 0.5
+  degrees: 5.0
+  translate: 0.1
+  scale: 0.5
+  shear: 2.0
+  perspective: 0.0005
+  flipud: 0.0
+  fliplr: 0.5
+  mosaic: 1.0
+  mixup: 0.1
+  copy_paste: 0.1
+  erasing: 0.4
+# Evaluation
+eval:
+  conf_threshold: 0.25       # P/R reported at this confidence
+  iou_threshold: 0.5         # match threshold for TP
+  min_conf_for_ap: 0.001
+# Batch inference into the detection table
+infer:
+  min_conf: 0.25
+  imgsz: 640
