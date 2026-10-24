@@ -172,6 +172,7 @@ class Barrier(SQLModel, table=True):
     permanent: bool = True
     time_profile: list[float] | None = Field(default=None, sa_column=Column(JSON))
     status: str = "active"  # active | fixed | expired | suspected
+    fixed_at: datetime | None = None
     confidence: float = 0.5
     sources: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     note: str | None = None
@@ -184,16 +185,46 @@ class Report(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
     photo_image_id: int | None = None
+    kind: str = "barrier"  # barrier | fixed
+    target_barrier_id: int | None = None  # for kind=fixed
     class_id: str
     severity: int
     note: str | None = None
     lat: float
     lon: float
     heading_deg: float | None = None
-    status: str = "pending"  # pending | verified | rejected | fixed
+    device_lat: float | None = None
+    device_lon: float | None = None
+    edge_id: int | None = Field(default=None, index=True)
+    side: str | None = None
+    position_along_edge_m: float | None = None
+    snap_confidence: float | None = None
+    status: str = "pending"  # pending | verified | rejected
     model_prescreen_score: float | None = None
+    prescreen_box: list[float] | None = Field(default=None, sa_column=Column(JSON))  # x1,y1,x2,y2 px
+    duplicate_of_barrier_id: int | None = None
     barrier_id: int | None = None
+    score: float = 0.0
+    n_votes: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    resolved_at: datetime | None = None
+    synthetic: bool = False
+
+
+class Mission(SQLModel, table=True):
+    """Top unknown stretches to photograph (plan 6.9)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    rank: int
+    priority: float
+    n_routes: int
+    length_m: float
+    edge_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))
+    geom_wkt: str
+    name_en: str | None = None
+    name_hi: str | None = None
+    status: str = "open"  # open | done
+    computed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     synthetic: bool = False
 
 
@@ -208,7 +239,8 @@ class Vote(SQLModel, table=True):
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     display_name: str
-    trust_score: float = 0.2
+    trust_score: float = 0.3
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     profile: str = "walker"  # wheelchair_manual | elderly_walking_aid | pram | walker
     language: str = "en"
     synthetic: bool = False

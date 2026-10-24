@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, LAYER_KEYS, type BarrierFeature, type LayerData, type LayerKey, type Zone } from './api';
+import {
+  api,
+  LAYER_KEYS,
+  type BarrierFeature,
+  type LayerData,
+  type LayerKey,
+  type MissionFeature,
+  type ReportItem,
+  type ReportTarget,
+  type RouteBarrier,
+  type Zone,
+} from './api';
 import { toLang, type Lang } from './i18n';
 import Header from './components/Header';
 import Legend from './components/Legend';
@@ -9,7 +20,10 @@ import MapView, { type BarrierSelection } from './components/MapView';
 import CapturePage from './components/CapturePage';
 import RoutePlanner from './components/RoutePlanner';
 import RouteCompare from './components/RouteCompare';
-import { useHashRoute } from './router';
+import ReportSheet, { type ReportMode } from './components/ReportSheet';
+import ValidatePage from './components/ValidatePage';
+import MissionsPage from './components/MissionsPage';
+import { navigate, useHashRoute, type Route } from './router';
 import { formatCoords, useRoutePlanner, type PointRole } from './routePlanner';
 
 type Theme = 'auto' | 'normal' | 'high-contrast';
@@ -83,12 +97,18 @@ export default function App() {
   const [listOpen, setListOpen] = useState(false);
   const [selection, setSelection] = useState<BarrierSelection | null>(null);
 
+  // ---- Citizen loop: report sheet, pending markers, highlighted mission ----
+  const [reportMode, setReportMode] = useState<ReportMode | null>(null);
+  const reportOpenerRef = useRef<HTMLElement | null>(null);
+  const [pendingReports, setPendingReports] = useState<ReportItem[]>([]);
+  const [mission, setMission] = useState<MissionFeature | null>(null);
+
   // ---- Route planner ----
   const planner = useRoutePlanner();
   const plannerOpen = planner.state.open;
   const pickMode = planner.state.pickMode;
   // Stable actions (useCallback / setState inside the hook) for dependency lists.
-  const { setOpen: setPlannerOpen, setPoint: setPlannerPoint, setPickMode, select: selectRoute } = planner;
+  const { setOpen: setPlannerOpen, setPoint: setPlannerPoint, setPickMode, select: selectRoute, rerun: rerunRoutes } = planner;
   const plannerBtnRef = useRef<HTMLButtonElement>(null);
   const legendBtnRef = useRef<HTMLButtonElement>(null);
   const listBtnRef = useRef<HTMLButtonElement>(null);
@@ -146,6 +166,42 @@ export default function App() {
     });
     return () => ac.abort();
   }, []);
+
+  // ---- Live update plumbing: reload footpaths + barriers (+ coverage when shown) after the server changed them. ----
+  const coverageVisibleRef = useRef(visible.coverage);
+  coverageVisibleRef.current = visible.coverage;
+  const refreshLayers = useCallback(async () => {
+    const withCoverage = coverageVisibleRef.current;
+    const [fp, ba, cov] = await Promise.allSettled([api.footpaths(), api.barriers(), withCoverage ? api.coverage() : Promise.resolve(undefined)]);
+    setData((cur) => {
+      const next: LayerData = { ...cur };
+      if (fp.status === 'fulfilled') next.footpaths = fp.value;
+      if (ba.status === 'fulfilled') next.barriers = ba.value;
+      if (cov.status === 'fulfilled' && cov.value) next.coverage = cov.value;
+      return next;
+    });
+    // Reports that became barriers (or were rejected) are no longer pending.
+    if (ba.status === 'fulfilled') {
+      const known = new Set(ba.value.features.map((f) => f.properties.id));
+      setPendingReports((list) => list.filter((r) => r.barrier_id === null || !known.has(r.barrier_id)));
+    }
+  }, []);
+
+  /** A vote (or report) resolved server-side: reload the layers and re-run the last comparison. */
+  const onResolved = useCallback(() => {
+    void refreshLayers();
+    rerunRoutes();
+  }, [refreshLayers, rerunRoutes]);
+
+  // Coming back to the map from Validate/Missions/Capture: others may have changed the map meanwhile.
+  const prevRouteRef = useRef<Route | null>(null);
+  useEffect(() => {
+    const prev = prevRouteRef.current;
+    prevRouteRef.current = route;
+    if (route === 'map' && prev !== null && prev !== 'map') void refreshLayers();
+    if (route !== 'map' && reportMode) setReportMode(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route, refreshLayers]);
 
   // ---- Theme (high contrast) ----
   useEffect(() => {
@@ -239,6 +295,37 @@ export default function App() {
     if (isNarrow()) setListOpen(false);
   }, []);
 
+  // ---- Report sheet ----
+  const openReport = useCallback((mode: ReportMode) => {
+    reportOpenerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setReportMode(mode);
+  }, []);
+  const closeReport = useCallback(() => {
+    setReportMode(null);
+    const opener = reportOpenerRef.current;
+    reportOpenerRef.current = null;
+    window.setTimeout(() => {
+      if (opener && opener.isConnected) opener.focus();
+      else document.getElementById('main')?.focus();
+    }, 0);
+  }, []);
+  const reportBarrier = useCallback(() => openReport({ kind: 'barrier' }), [openReport]);
+  const reportFixed = useCallback((target: ReportTarget) => openReport({ kind: 'fixed', target }), [openReport]);
+  const reportFixedFromRoute = useCallback(
+    (b: RouteBarrier) => reportFixed({ id: b.id, class_id: b.class, name_en: b.name_en, name_hi: b.name_hi, severity: b.severity }),
+    [reportFixed],
+  );
+  const onReportSubmitted = useCallback((rep: ReportItem) => {
+    if (rep.kind === 'barrier' && rep.status === 'pending') setPendingReports((list) => [...list, rep]);
+    // A report may resolve immediately (e.g. a trusted reporter): reload so the map/routes catch up.
+    if (rep.status !== 'pending') onResolved();
+  }, [onResolved]);
+
+  const showMission = useCallback((m: MissionFeature) => {
+    setMission(m);
+    navigate('map');
+  }, []);
+
   const barriers = useMemo(() => data.barriers?.features ?? [], [data.barriers]);
   const footpathCount = data.footpaths?.features.length ?? 0;
 
@@ -257,6 +344,8 @@ export default function App() {
       {basemapError && <span className="statusline__extra"> {t('load.basemap')}</span>}
     </p>
   );
+
+  const missionName = mission ? (lang === 'hi' ? mission.properties.name_hi || mission.properties.name_en : mission.properties.name_en) : '';
 
   return (
     <div className="app">
@@ -287,6 +376,14 @@ export default function App() {
         <main id="main" className="main main--page" tabIndex={-1}>
           <CapturePage />
         </main>
+      ) : route === 'validate' ? (
+        <main id="main" className="main main--page" tabIndex={-1}>
+          <ValidatePage zone={zone} lang={lang} onResolved={onResolved} />
+        </main>
+      ) : route === 'missions' ? (
+        <main id="main" className="main main--page" tabIndex={-1}>
+          <MissionsPage lang={lang} onShowOnMap={showMission} />
+        </main>
       ) : (
         <main id="main" className={`main${plannerOpen ? ' main--planner' : ''}`} tabIndex={-1}>
           <MapView
@@ -304,6 +401,9 @@ export default function App() {
             destination={planner.state.destination}
             pickMode={pickMode}
             onPick={onPick}
+            pendingReports={pendingReports}
+            mission={mission}
+            onReportFixed={reportFixed}
           />
 
           {pickMode && !plannerOpen && (
@@ -315,20 +415,44 @@ export default function App() {
             </div>
           )}
 
+          {mission && !pickMode && (
+            <div className="banner banner--pick banner--mission" role="status" aria-live="polite" lang={lang}>
+              <span>{t('missions.onMap', { rank: mission.properties.rank, name: missionName })}</span>
+              <button type="button" className="btn" onClick={() => setMission(null)}>
+                {t('missions.clearMap')}
+              </button>
+            </div>
+          )}
+
           {status === 'error' && (
             <div className="banner banner--error" role="alert">
               {t('load.error')}
             </div>
           )}
 
+          {!plannerOpen && !pickMode && (
+            <button type="button" className="fab" onClick={reportBarrier}>
+              <span className="fab__glyph" aria-hidden="true">
+                📣
+              </span>
+              <span className="fab__text">{t('report.fab')}</span>
+            </button>
+          )}
+
           {plannerOpen && (
             <div className="route-dock" onKeyDown={onPanelKeyDown(togglePlanner)}>
               <aside id="panel-route" className="panel panel--route" aria-labelledby="route-title">
-                <RoutePlanner planner={planner} lang={lang} onClose={togglePlanner} headingRef={plannerHeadingRef} />
+                <RoutePlanner planner={planner} lang={lang} onClose={togglePlanner} headingRef={plannerHeadingRef} onReport={reportBarrier} />
               </aside>
               {result && (
                 <aside className="panel panel--compare" aria-labelledby="compare-title">
-                  <RouteCompare result={result} selected={planner.state.selected} lang={lang} onSelect={selectRoute} />
+                  <RouteCompare
+                    result={result}
+                    selected={planner.state.selected}
+                    lang={lang}
+                    onSelect={selectRoute}
+                    onReportFixed={reportFixedFromRoute}
+                  />
                 </aside>
               )}
             </div>
@@ -357,6 +481,8 @@ export default function App() {
               />
             </aside>
           )}
+
+          {reportMode && <ReportSheet mode={reportMode} lang={lang} onClose={closeReport} onSubmitted={onReportSubmitted} />}
         </main>
       )}
     </div>

@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { localizedName, PROFILES, RISKS, routeApi, type Profile, type Risk, type SearchResult } from '../api';
+import { localizedName, PROFILES, RISKS, routeApi, type Risk, type SearchResult } from '../api';
 import type { Lang } from '../i18n';
 import { formatCoords, type PlannerPoint, type PointRole, type RoutePlannerApi } from '../routePlanner';
+import { PROFILE_GLYPHS } from './UserDialog';
 
 const SEARCH_DEBOUNCE_MS = 300;
-const PROFILE_GLYPHS: Record<Profile, string> = {
-  walker: '🚶',
-  wheelchair_manual: '♿',
-  elderly_walking_aid: '🧓',
-  pram: '🍼',
-};
 
 type GeoErrorKey = 'denied' | 'unavailable' | 'timeout' | 'unsupported';
 
@@ -262,9 +257,11 @@ interface RoutePlannerProps {
   onClose: () => void;
   /** Receives the heading element so the opener can move focus to it. */
   headingRef: RefObject<HTMLHeadingElement>;
+  /** Opens the "Report a barrier" sheet (the map FAB is hidden while the planner is open). */
+  onReport: () => void;
 }
 
-export default function RoutePlanner({ planner, lang, onClose, headingRef }: RoutePlannerProps) {
+export default function RoutePlanner({ planner, lang, onClose, headingRef, onReport }: RoutePlannerProps) {
   const { t } = useTranslation();
   const { state } = planner;
   const [announcement, setAnnouncement] = useState('');
@@ -403,6 +400,11 @@ export default function RoutePlanner({ planner, lang, onClose, headingRef }: Rou
           {t(`route.errors.${state.error}`)}
         </p>
       )}
+
+      <button type="button" className="btn planner__report" onClick={onReport}>
+        <span aria-hidden="true">📣 </span>
+        {t('report.fab')}
+      </button>
     </div>
   );
 }

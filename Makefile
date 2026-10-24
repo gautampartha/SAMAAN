@@ -4,7 +4,7 @@ PY      := .venv/bin/python
 UV      := uv
 DB      := data/processed/samaan.sqlite
 
-.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval api test lint web web-install clean-db help
+.PHONY: setup seed graph graph-export graph-import graph-validate coverage ingest-mapillary ml-smoke train eval infer geolocate snapping-eval missions export-active api test lint web web-install clean-db help
 
 help:
 	@echo "make setup        create .venv (Python 3.11) and install deps"
@@ -21,6 +21,8 @@ help:
 	@echo "make infer WEIGHTS=path.pt                 detections for all stored zone images"
 	@echo "make geolocate    detections -> located, side-aware snapped, clustered into barriers, states"
 	@echo "make snapping-eval   ours vs naive snapper against data/ground_truth/snapping.csv -> eval/results/"
+	@echo "make missions     sample OD pairs, score unknown stretches, store the top missions"
+	@echo "make export-active   verified report photos -> YOLO dataset data/labels/active_<date>/"
 	@echo "make api          serve FastAPI on http://127.0.0.1:8000 (docs at /docs)"
 	@echo "make test         run pytest"
 	@echo "make web-install  npm install in web/"
@@ -76,6 +78,12 @@ geolocate:
 
 snapping-eval:
 	$(PY) -m eval.snapping_eval
+
+missions:
+	$(PY) -c "from sqlmodel import Session; from api.db import init_db; from pipeline.missions.compute import compute_missions; print(compute_missions(Session(init_db())))"
+
+export-active:
+	$(PY) -m ml.export_active_learning
 
 api:
 	$(PY) -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload

@@ -52,6 +52,15 @@ function ImageSwatch({ colour, ring, radius }: { colour: string; ring: string; r
   );
 }
 
+function PendingReportSwatch() {
+  return (
+    <svg className="swatch" viewBox="0 0 56 24" width="56" height="24" aria-hidden="true" focusable="false">
+      <circle cx="28" cy="12" r="9" fill="rgba(255,255,255,0.85)" stroke="#0b5fa5" strokeWidth="3" />
+      <text x="28" y="16" textAnchor="middle" fontSize="11" fill="#0b5fa5" fontWeight="700">?</text>
+    </svg>
+  );
+}
+
 function EndpointSwatch({ colour, label }: { colour: string; label: string }) {
   return (
     <svg className="swatch" viewBox="0 0 56 24" width="56" height="24" aria-hidden="true" focusable="false">
@@ -104,6 +113,14 @@ export default function Legend({ visible, onToggle, onClose, headingRef }: Legen
         <div className="legend__row">
           <dt><BarrierRingSwatch /> {t('layers.barriers')}</dt>
           <dd>{t('legend.routeBarrier')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><PendingReportSwatch /> {t('report.pendingMarker')}</dt>
+          <dd>{t('legend.pendingReport')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><LineSwatch colour="#424242" width={8} dash="10 7" casing /> {t('missions.title')}</dt>
+          <dd>{t('legend.mission')}</dd>
         </div>
         <div className="legend__row">
           <dt><EndpointSwatch colour={ROUTE_ENDPOINT_COLOURS.origin} label="A" /> {t('route.origin')}</dt>

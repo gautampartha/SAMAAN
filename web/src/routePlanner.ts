@@ -108,6 +108,8 @@ export function useRoutePlanner() {
   const [selected, setSelected] = useState<RouteMode | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
+  /** The last request, so the comparison can be re-run after the map changed (a resolved vote). */
+  const lastRef = useRef<{ fetcher: (signal: AbortSignal) => Promise<RouteResponse>; demo: boolean } | null>(null);
 
   useEffect(() => writeStored(PROFILE_KEY, profile), [profile]);
   useEffect(() => writeStored(RISK_KEY, risk), [risk]);
@@ -127,20 +129,22 @@ export function useRoutePlanner() {
   }, []);
 
   const run = useCallback(
-    async (fetcher: (signal: AbortSignal) => Promise<RouteResponse>, demo: boolean) => {
+    async (fetcher: (signal: AbortSignal) => Promise<RouteResponse>, demo: boolean, keepSelection = false) => {
       if (loadingRef.current) return; // one request at a time; buttons stay enabled so focus is not lost
       loadingRef.current = true;
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
+      lastRef.current = { fetcher, demo };
       setLoading(true);
       setError(null);
       try {
         const res = await fetcher(ac.signal);
         if (ac.signal.aborted) return;
         setResult(res);
-        // Highlight SAMAAN's route; fall back to whichever route exists.
-        setSelected(res.routes.samaan ? 'samaan' : res.routes.naive_accessible ? 'naive_accessible' : res.routes.shortest ? 'shortest' : null);
+        // Highlight SAMAAN's route; fall back to whichever route exists. A re-run keeps the user's pick.
+        const fallback = res.routes.samaan ? 'samaan' : res.routes.naive_accessible ? 'naive_accessible' : res.routes.shortest ? 'shortest' : null;
+        setSelected((cur) => (keepSelection && cur && res.routes[cur] ? cur : fallback));
         if (demo) {
           setOrigin({ lat: res.origin.lat, lon: res.origin.lon, label: formatCoords(res.origin.lat, res.origin.lon) });
           setDestination({
@@ -172,9 +176,17 @@ export function useRoutePlanner() {
     void run((signal) => routeApi.demo('riya', params, signal), true);
   }, [profile, risk, time, run]);
 
+  /** Re-run the last comparison (after a resolved vote changed barriers/footpaths). No-op without one. */
+  const rerun = useCallback(() => {
+    const last = lastRef.current;
+    if (!last) return;
+    void run(last.fetcher, last.demo, true);
+  }, [run]);
+
   const clear = useCallback(() => {
     abortRef.current?.abort();
     loadingRef.current = false;
+    lastRef.current = null;
     setResult(null);
     setSelected(null);
     setError(null);
@@ -206,6 +218,7 @@ export function useRoutePlanner() {
     setTime,
     compare,
     runDemo,
+    rerun,
     clear,
     select: setSelected,
   };

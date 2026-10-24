@@ -615,5 +615,114 @@ build, and `GET /search` over places, anchors, streets and the demo destination.
 
 ---
 
-## Phase P7 — Report, Validate, Missions
+## Phase P7 — Report, Validate, Missions (2026-10-24) — done
+
+### Plan
+Plan 6.8 + 6.9. Backend: users (no auth; display name + profile, trust score starting low),
+`POST /reports` (photo + class + severity + GPS/heading; rate limit; reject when the photo is
+> 50 m from the device; detector pre-screen when weights exist; geolocate + side-aware snap via
+P4; duplicate detection against active barriers within 4 m; `pending`), the validation queue
+(`GET /reports` near a point, excluding own), trust-weighted votes (`score = Σ vote × trust`,
+verify/reject thresholds), verification creates or updates a barrier and recomputes states and
+the routing context immediately, trust updates for reporter and voters, the fixed flow (a
+`kind=fixed` report closes its target barrier on verification), `ml/export_active_learning.py`
+(verified report photos → YOLO export with the prescreen box or a flagged weak box), and
+missions (500 random OD pairs + anchor pairs routed in `samaan` and `shortest` mode; priority of
+an unknown edge = routes using or detouring around it × length; top stretches as GeoJSON).
+Web: Report sheet, Validate page, Missions page, user dialog, live refresh after resolution.
+
+### What was built (backend)
+- `api/services/reports.py` + `api/routers/reports.py`: `POST /users` (display name, profile,
+  language, `team=true` for the demo crew → trust 0.8, others start at 0.3), `GET /users/{id}`;
+  `POST /reports` (multipart: photo optional, class, severity, GPS, heading/pitch/HFOV,
+  device GPS, `kind=barrier|fixed`, `target_barrier_id`): per-user rate limit (30/h), reject
+  when the photo is > 50 m from the device (`gps_offset`), photo stored under
+  `data/raw/reports/`, **prescreen** with the detector when `reports.prescreen.weights` exists
+  (max score for the reported class + its box; skipped gracefully otherwise), **geolocate + side-
+  aware snap** reusing P4 (prescreen box, else a centred low box; without a heading the reporter's
+  own position is snapped), **duplicate detection** against active barriers of the same class
+  within 4 m; status `pending`. `GET /reports` (near a point within 300 m, newest otherwise, own
+  reports excluded, `my_vote`, distance), `GET /reports/{id}`. `POST /reports/{id}/votes`:
+  one vote per user (changeable), `score = Σ weight × voter trust` (agree +1, disagree −1,
+  unsure 0), verify at ≥ 0.6 / reject at ≤ −0.6, own report → 409, resolved → 400. **Resolution**
+  creates a barrier (confidence from base 0.4 ± prescreen) or merges into the duplicate (severity
+  averaged, confidence up, sources appended), or for `kind=fixed` closes the target barrier
+  (`status=fixed`, `fixed_at`); then the shared state recompute runs and the API reloads the
+  routing context, so the next `/route` call already reflects it. **Trust**: reporter +0.1 on
+  verify / −0.15 on reject; voters +0.05 when with the consensus / −0.05 against (unsure neutral);
+  clamped 0.05–1.0. All values in `config/pipeline.yaml` → `reports`.
+- A real blocking barrier now makes an edge's state real (`state_synthetic=false`) even where
+  the coverage is seeded.
+- `pipeline/missions/compute.py` + `GET /missions` / `POST /missions/recompute` (`make missions`):
+  500 random OD pairs (200–1500 m apart) plus anchor pairs, routed in `samaan` and `shortest`
+  mode; an unknown edge scores one per route that uses it or detours around it; priority =
+  count × length; scored edges merged into connected stretches; top 10 stored as `mission`
+  rows with the nearest named road; `status` flips to `done` when none of a mission's edges is
+  unknown any more. Real zone: 600 routes in ~5 s, 729 unknown edges scored, 272 stretches.
+- `ml/export_active_learning.py` (`make export-active`): verified barrier reports with photos →
+  YOLO dataset `data/labels/active_<date>/` using the prescreen box, else a centred weak box
+  flagged `needs_box_review` in `manifest.csv`; never synthetic.
+- Tests (105 passing): report → queue → votes → verified → barrier created, edge blocked, SAMAAN
+  route re-planned around it, trust changes; duplicate merge; rejection lowers trust; abuse
+  checks (GPS offset, unknown user/class/severity, fixed without target, rate limit 30 → 429);
+  fixed flow closes the barrier and clears the edge with a single team vote; missions ranking
+  and done-flip; active-learning export with weak boxes.
+
+### What was built (web)
+- Identity: "Who are you?" dialog (name, profile, **"I am on the SAMAAN team"** checkbox → trusted
+  user who verifies alone), stored locally; a chip shows name and trust level.
+- **Report sheet**: floating "Report a barrier" button on the map and a button in the planner;
+  GPS + compass captured on open, camera preview with file fallback, class tiles (8 detector
+  classes, then the report-only ones), severity tiles 1–5 with a pictogram and word, note; posts
+  multipart; shows the prescreen verdict ("Our detector also sees …" / "not recognised"),
+  duplicate hint, and the error reasons (rate limit, > 50 m from device, invalid). Pending reports
+  appear as hollow markers until verified. **"Report as fixed"** in barrier popups and on route
+  cards opens the sheet with class/severity locked and photo required.
+- **Validate page** (`#/validate`): nearest pending reports within 300 m (newest anywhere when
+  GPS is unavailable, with a note), one card at a time: photo, class, severity, note, distance,
+  time, mini-map, Agree / Disagree / Unsure (keys 1/2/3), result line; when a vote resolves the
+  report the page says "Verified — the map and routes were updated", reloads the layers and
+  re-runs the last route comparison.
+- **Missions page** (`#/missions`): ranked list (street, length, "needed by N routes",
+  open/done), "Show on map" highlights the stretch, "Walk this" opens capture with the session
+  id `mission-<id>`, Recompute.
+- Verified live on a scratch DB: a steps report placed on Riya's SAMAAN route (pending, hollow
+  marker) → one Agree from a team user on the Validate page → "Verified" message → the API's
+  SAMAAN route moved from 821 m / 41 edges to 830 m / 42 edges avoiding that edge, and the
+  shortest route now lists a third impassable steps barrier. No console errors. Camera and GPS
+  cannot run in the desktop pane; the street test is a human task.
+
+### Decisions taken alone
+- Verify threshold 0.6 with new users at 0.3 and team users at 0.8: two strangers or one team
+  member verify a report; the same symmetric threshold rejects. Plan's fallback ("simple
+  majority") was not needed.
+- Reports without a heading snap the reporter's own position; with a heading they go through the
+  P4 locate + snap using the prescreen box or a centred low box.
+- Report photos are stored under `data/raw/reports/` (gitignored) with attribution "citizen
+  report by user N".
+- Missions name a stretch after the nearest *named* road; OSM names only four streets here, so
+  most missions read "Bhartendu Harish Chandra Marg". Human correction of street names in OSM
+  would fix this at the source.
+
+### Open issues
+- The Validate card's status line shows the pre-vote snapshot until "Next report" (cosmetic).
+- No marker drag on the report sheet: the barrier position equals the phone position at photo
+  time; the heading-based offset handles the common "pointing at it from the footpath" case.
+- Prescreen needs the trained weights; until then every report says "not recognised".
+- Trust is per device (localStorage), not authenticated; acceptable for the hackathon, noted
+  for the pitch's honesty slide.
+
+### Human tasks (P7)
+20. **Street test of the citizen loop** (30 min, two phones, after HTTPS is set up): phone A
+    (new user) reports a real obstacle with a photo; phone B (team user, tick "I am on the
+    SAMAAN team") opens Validate, votes Agree, confirms the route re-plans; then phone B reports
+    it as fixed and phone A validates. Note anything confusing in this file.
+21. **Review Hindi strings** (10 min) in `web/src/i18n/hi.json` sections `user`, `report`,
+    `validate`, `missions`: the agent flagged "पार नहीं हो सकती", "ठीक हो गई, रिपोर्ट करें",
+    "भरोसा … नया/नियमित/भरोसेमंद", "मिशन", "इस पर चलें", "पुनर्गणना करें", "पक्का नहीं",
+    "फुट ओवरब्रिज, केवल सीढ़ियाँ", "हमारा डिटेक्टर भी देखता है".
+
+---
+
+## Phase P8 — Reach Gap
 _Not started. Waiting for "go"._

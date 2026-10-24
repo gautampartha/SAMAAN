@@ -1,4 +1,4 @@
-# SAMAAN web (P0 scaffold + P2 capture + P3 route planner)
+# SAMAAN web (P0 scaffold + P2 capture + P3 route planner + P7 citizen loop)
 
 Vite + React 18 + TypeScript single-page PWA that renders the SAMAAN API's
 GeoJSON layers on a MapLibre GL JS map, in English and Hindi, with
@@ -24,16 +24,19 @@ empty map.
 
 | Variable       | Default                  | Purpose                                                        |
 | -------------- | ------------------------ | -------------------------------------------------------------- |
-| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route` and `GET /search` (barrier `photo_urls` are relative to it) |
+| `VITE_API_URL` | `http://127.0.0.1:8000`  | Base URL of the SAMAAN API (no slash); used for layers, photo uploads (`POST /images`), photo display (`GET /images/{id}/photo`), `POST /coverage/recompute`, `GET /route`, `GET /search`, the citizen loop (`/users`, `/reports`, `/reports/{id}/votes`, `/missions`) (barrier `photo_urls` and report `photo_url` are relative to it) |
 
 ## Pages
 
 The app is a single page with a hash router (`src/router.ts`, no library):
 
-- `#/` (default) - the map.
+- `#/` (default) - the map (with the route planner and the **Report a barrier** button).
 - `#/capture` - the photo-walk capture page.
+- `#/validate` - validate pending citizen reports, one card at a time.
+- `#/missions` - the top-10 footpath stretches that most need a photo walk.
 
-The header carries a Map / Capture navigation with `aria-current="page"`.
+The header carries a Map / Capture / Validate / Missions navigation with
+`aria-current="page"`.
 
 ## Route planner and three-route comparison (`#/`)
 
@@ -115,6 +118,114 @@ carries `photo_urls`; the property is optional and ignored when absent.
    legend and barrier list panels behave the same way (Escape closes, focus
    returns to their toolbar button).
 
+## Citizen loop: Report → Validate → map/route update (P7)
+
+No login: the first time someone reports or validates, a small **"Who are
+you?"** dialog (`src/components/UserDialog.tsx`) asks for a display name and a
+mobility profile (walker / manual wheelchair / elderly with walking aid / pram)
+and calls `POST /users`. The result `{id, display_name, trust_score, profile}`
+is kept in `localStorage` under `samaan.user` (`src/user.ts`, a tiny external
+store shared by every page). The report sheet and the validate page show a
+chip "You: Riya · Trust 0.30 · new" (levels: new < 0.4, regular < 0.7,
+trusted) with a **Change** button that re-opens the dialog; the trust score is
+refreshed from `GET /users/{id}` after every report and vote. A 404 from that
+refresh (API reseeded) clears the stored user so the dialog shows again.
+
+### Report a barrier (`src/components/ReportSheet.tsx`)
+
+Opened by the floating **Report a barrier** button on the map (56 px, bottom
+right, hidden while the planner or pick-on-map is active), by the same button
+at the bottom of the route planner, by **Report as fixed** in a barrier popup
+and by **Report as fixed** on a barrier row of a route card. The sheet is a
+modal (`role="dialog"`, `aria-modal`, Tab trapped, Escape closes, focus moves
+to the heading on open and back to the opener on close; a bottom sheet on
+phones, a 560 px card on wider screens):
+
+1. GPS and compass start immediately (`useSensors()` from `src/sensors.ts`);
+   the current position, accuracy and quality word are shown in a live region.
+2. Camera preview through the shared `useCamera()` hook (`src/camera.ts`, also
+   used by the capture page); **Take photo** grabs a JPEG frame, **Retake**
+   restarts the preview. Without a secure context or camera permission the
+   `<input type="file" capture="environment">` fallback is offered. The photo
+   is optional (strongly encouraged) for a barrier and required for a fix.
+3. Class picker: big icon tiles (emoji glyph hidden from AT + localised name),
+   the eight detector classes first, then the report-only classes under
+   "Other" (no footpath, footpath ends, waterlogging, construction, lift out
+   of service, foot overbridge stairs only). Native radios, so arrow keys work.
+4. Severity 1-5 as five large tiles with a bar pictogram and the word (Minor,
+   Low, Moderate, High, Impassable). Checked tiles get a thicker border, a
+   tint **and** a check mark.
+5. Optional note, then **Send report**.
+
+The multipart `POST /reports` carries `lat`/`lon` = the GPS fix at the moment
+the photo was taken (or the current fix without a photo) and
+`device_lat`/`device_lon` = the current fix, plus `heading_deg`, `pitch_deg`,
+`hfov_deg` (the capture page's setting), `captured_at`, `kind` and
+`target_barrier_id` for fixes. The marker cannot be dragged (not implemented),
+so the two positions are always the phone's position. States: sending
+(`role="status"`) → "Report sent, pending validation." with the prescreen line
+("Our detector also sees: Steps (0.82)" / "Detector did not recognise it;
+validation needed.") and a duplicate hint when `duplicate_of_barrier_id` is
+set → or an error (`role="alert"`): 429 rate limit, 422 `gps_offset` ("Your
+photo location is more than 50 m from where you are"), 404 unknown target,
+other 422, generic. Pending barrier reports from this session are drawn on
+the map as a hollow blue circle with a "?" (see the legend) until a layer
+refresh shows them as real barriers.
+
+**Report as fixed** opens the same sheet with `kind=fixed`: class and
+severity are shown from the barrier and locked, the photo is required.
+
+### Validate (`#/validate`, `src/components/ValidatePage.tsx`)
+
+Loads `GET /reports?status=pending&near_lat&near_lon&radius_m=300&user_id`
+with the phone's position (own reports are excluded by the API). If
+geolocation fails or nothing is within 300 m it falls back to the newest
+pending reports without `near_*` and says so. One card at a time (Project
+Sidewalk style): big photo (or "No photo"), class, severity, note, distance,
+time, status/votes/detector score, the target barrier for fixes, a 160 px
+non-interactive MapLibre mini-map with the report marker (hidden when `/zone`
+is unavailable), and three 72 px buttons **Agree / Disagree / Unsure** (glyph +
+text + key badge). A vote posts to `/reports/{id}/votes`; the result line shows
+the new score, vote count and status. When `resolved` is true the card
+announces "Verified — the map and routes were updated." (or rejected / fixed)
+and the app calls `refreshLayers()` and `routePlanner.rerun()`. **Next report**
+takes focus after every vote so Enter continues; the next card's heading is
+focused. 409 (own report) and 400 (already resolved) are explained and the
+card can be skipped. Empty state: "Nothing to validate nearby." with **Check
+again**.
+
+### Missions (`#/missions`, `src/components/MissionsPage.tsx`)
+
+`GET /missions?limit=10` as a ranked list: street name in the current
+language, length, "needed by N routes", Open/Done badge (done rows are also
+dashed and struck through). **Show on map** navigates to the map and draws the
+mission's LineString as a thick dashed grey line with a white casing and the
+street name along it (`missions` source/layer in `MapView.tsx`), fits the map
+to it and shows a banner with a **Hide mission** button. **Walk this** stores
+`mission-<id>` in `localStorage` `samaan.capture.session` and opens
+`#/capture`, where the session id is prefilled. **Recompute** posts
+`/missions/recompute` (busy state, about 10 s) and reloads the list.
+
+### Live update plumbing
+
+`App.tsx` owns `refreshLayers()` (reloads `/layers/footpaths` and
+`/layers/barriers`, plus `/layers/coverage` when that layer is visible, and
+drops pending markers whose report became a barrier) and the planner hook
+exposes `rerun()` (repeats the last `/route` request, keeping the selected
+card). Both run after a resolved vote and after a report that the API resolved
+immediately, and `refreshLayers()` also runs whenever the user returns to the
+map page from another page.
+
+### Keyboard shortcuts
+
+- Validate page: **1** = Agree, **2** = Disagree, **3** = Unsure (ignored while
+  typing in a field or while the "Who are you?" dialog is open; each button
+  also carries `aria-keyshortcuts`). After a vote, **Enter** on the focused
+  **Next report** button continues.
+- Report sheet and user dialog: **Escape** closes (focus returns to the
+  opener), **Tab** cycles inside the dialog, arrow keys move within the class
+  and severity tile groups.
+
 ## Capture page (`#/capture`)
 
 For a phone held upright while walking along a footpath, photographing both
@@ -193,13 +304,19 @@ singleton, so switching back to the map does not stop uploads.
   phone tab strip.
 - `src/components/routeStyles.tsx` - shared line styles/swatches for the three
   routes, the unknown overlay and the barrier ring.
-- `src/routePlanner.ts` - `useRoutePlanner()` state hook, `departIso()`,
-  localStorage keys.
+- `src/routePlanner.ts` - `useRoutePlanner()` state hook (incl. `rerun()`),
+  `departIso()`, localStorage keys.
 - `src/components/CapturePage.tsx` - camera preview, sensors, settings, queue UI.
+- `src/components/ReportSheet.tsx` - "Report a barrier" / "Report as fixed" modal sheet.
+- `src/components/UserDialog.tsx` - "Who are you?" dialog, `UserChip`, Tab trap helper.
+- `src/components/ValidatePage.tsx` - one-card-at-a-time validation with mini-map and 1/2/3 keys.
+- `src/components/MissionsPage.tsx` - ranked missions, show on map, walk this, recompute.
+- `src/user.ts` - stored citizen identity (`samaan.user`), `useUser()`, `createUser()`, `refreshUser()`.
+- `src/camera.ts` - `useCamera()` (rear camera preview + JPEG frame grab) shared by capture and report.
 - `src/sensors.ts` - `useSensors()` (GPS, compass heading, pitch), haversine.
 - `src/uploadQueue.ts` - persistent sequential upload queue with backoff.
 - `src/idb.ts` - minimal IndexedDB wrapper (open, put, getAll, remove).
-- `src/router.ts` - `useHashRoute()`, `navigate()`, `hrefFor()`.
+- `src/router.ts` - `useHashRoute()`, `navigate()`, `hrefFor()` for the four pages.
 - `src/styles.css` - mobile-first styles, light/dark/high-contrast tokens.
 - `public/manifest.webmanifest`, `public/icon.svg` - PWA manifest (no service
   worker yet).
@@ -260,5 +377,13 @@ the i18n files also carry the eight barrier class names for labels.
       text badge, route styles differ by width and dash, no horizontal page
       scroll at 360-375 px (the card strip scrolls inside the sheet).
 
+- [x] Citizen loop: modal sheet/dialog with `aria-modal`, Tab trap, Escape and
+      focus return; class/severity tiles are native radios with a check mark
+      plus border for the checked state; vote buttons 72 px with glyph, text
+      and visible key badge; vote results and resolutions in live regions;
+      pending-report marker has a "?" label and a legend row; mission line is
+      dashed with a casing and a text label.
+
 Not yet done (later phases): service worker/offline, keyboard navigation of
-map features themselves (use the list).
+map features themselves (use the list), dragging the report marker on a mini
+map.

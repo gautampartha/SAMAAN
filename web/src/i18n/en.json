@@ -1,10 +1,28 @@
 {
-  "app": { "name": "SAMAAN", "tagline": "Walk for All" },
-  "skip": { "toContent": "Skip to main content" },
-  "header": { "zoneLabel": "Zone", "zoneUnknown": "Zone unavailable" },
-  "lang": { "label": "Language", "en": "English", "hi": "हिन्दी" },
-  "theme": { "highContrast": "High contrast" },
-  "panels": { "legend": "Layers & legend", "barriers": "Barrier list", "close": "Close" },
+  "app": {
+    "name": "SAMAAN",
+    "tagline": "Walk for All"
+  },
+  "skip": {
+    "toContent": "Skip to main content"
+  },
+  "header": {
+    "zoneLabel": "Zone",
+    "zoneUnknown": "Zone unavailable"
+  },
+  "lang": {
+    "label": "Language",
+    "en": "English",
+    "hi": "हिन्दी"
+  },
+  "theme": {
+    "highContrast": "High contrast"
+  },
+  "panels": {
+    "legend": "Layers & legend",
+    "barriers": "Barrier list",
+    "close": "Close"
+  },
   "layers": {
     "title": "Layers",
     "footpaths": "Footpaths",
@@ -14,7 +32,11 @@
     "demo": "Demo route",
     "images": "Images"
   },
-  "state": { "clear": "Clear", "blocked": "Blocked", "unknown": "Unknown" },
+  "state": {
+    "clear": "Clear",
+    "blocked": "Blocked",
+    "unknown": "Unknown"
+  },
   "legend": {
     "title": "Legend",
     "clear": "solid thick green line",
@@ -38,9 +60,18 @@
     "routeNaive": "Naive accessible: medium dotted orange line",
     "routeSamaan": "SAMAAN: thick solid purple line with a white edge",
     "routeUnknown": "Grey striped overlay: an unchecked stretch of the selected route",
-    "routeBarrier": "Red ring: a barrier on the selected route; the ring pulses unless reduced motion is on"
+    "routeBarrier": "Red ring: a barrier on the selected route; the ring pulses unless reduced motion is on",
+    "pendingReport": "Pending report: hollow blue circle with a question mark, not yet validated",
+    "mission": "Mission: thick dashed grey line labelled with the street name"
   },
-  "severity": { "label": "Severity", "1": "Very low", "2": "Low", "3": "Medium", "4": "High", "5": "Very high" },
+  "severity": {
+    "label": "Severity",
+    "1": "Very low",
+    "2": "Low",
+    "3": "Medium",
+    "4": "High",
+    "5": "Very high"
+  },
   "barrierClass": {
     "steps_or_high_kerb": "Steps or high kerb",
     "parked_vehicle": "Parked vehicle",
@@ -49,10 +80,26 @@
     "broken_surface": "Broken surface",
     "fixed_obstacle": "Fixed obstacle",
     "vendor_encroachment": "Vendor encroachment",
-    "bike_barrier": "Bike barrier"
+    "bike_barrier": "Bike barrier",
+    "no_footpath": "No footpath",
+    "footpath_end": "Footpath ends",
+    "waterlogging": "Waterlogging",
+    "construction": "Construction",
+    "lift_out_of_service": "Lift out of service",
+    "foot_overbridge_stairs_only": "Foot overbridge, stairs only"
   },
-  "anchorKind": { "metro": "Metro station", "bus_stop": "Bus stop", "hospital": "Hospital", "school": "School" },
-  "demo": { "origin": "Origin", "destination": "Destination", "path": "Demo route", "length": "Length" },
+  "anchorKind": {
+    "metro": "Metro station",
+    "bus_stop": "Bus stop",
+    "hospital": "Hospital",
+    "school": "School"
+  },
+  "demo": {
+    "origin": "Origin",
+    "destination": "Destination",
+    "path": "Demo route",
+    "length": "Length"
+  },
   "popup": {
     "class": "Type",
     "kind": "Kind",
@@ -66,8 +113,14 @@
     "unverified": "Not verified",
     "close": "Close popup"
   },
-  "status": { "active": "Active", "fixed": "Fixed", "expired": "Expired" },
-  "badge": { "synthetic": "Synthetic demo data" },
+  "status": {
+    "active": "Active",
+    "fixed": "Fixed",
+    "expired": "Expired"
+  },
+  "badge": {
+    "synthetic": "Synthetic demo data"
+  },
   "list": {
     "title": "Barrier list",
     "count_one": "{{count}} barrier",
@@ -83,9 +136,19 @@
     "error": "Could not reach the SAMAAN API. Showing an empty map.",
     "basemap": "The basemap could not be loaded."
   },
-  "nav": { "label": "Pages", "map": "Map", "capture": "Capture" },
+  "nav": {
+    "label": "Pages",
+    "map": "Map",
+    "capture": "Capture",
+    "validate": "Validate",
+    "missions": "Missions"
+  },
   "images": {
-    "source": { "mapillary": "Mapillary image", "own": "Own photo", "report": "Report photo" },
+    "source": {
+      "mapillary": "Mapillary image",
+      "own": "Own photo",
+      "report": "Report photo"
+    },
     "time": "Taken",
     "heading": "Heading",
     "hfov": "Field of view",
@@ -100,9 +163,18 @@
     "unobserved": "Not yet observed",
     "nImages": "Images",
     "sourceLabel": "Coverage from",
-    "source": { "image": "Real images", "seed": "Seeded demo data", "wheel": "Wheel survey", "report": "Reports" },
+    "source": {
+      "image": "Real images",
+      "seed": "Seeded demo data",
+      "wheel": "Wheel survey",
+      "report": "Reports"
+    },
     "sideLabel": "Side",
-    "side": { "L": "Left", "R": "Right", "none": "Whole street" },
+    "side": {
+      "L": "Left",
+      "R": "Right",
+      "none": "Whole street"
+    },
     "lastObserved": "Last observed",
     "seeded": "Seeded, not real coverage"
   },
@@ -134,9 +206,26 @@
     "heading": "Heading",
     "pitch": "Pitch",
     "sourceLabel": "Compass source",
-    "source": { "absolute": "Absolute compass", "relative": "Relative (uncalibrated) orientation", "none": "No compass" },
-    "quality": { "good": "good", "ok": "ok", "poor": "poor" },
-    "cardinal": { "n": "N", "ne": "NE", "e": "E", "se": "SE", "s": "S", "sw": "SW", "w": "W", "nw": "NW" },
+    "source": {
+      "absolute": "Absolute compass",
+      "relative": "Relative (uncalibrated) orientation",
+      "none": "No compass"
+    },
+    "quality": {
+      "good": "good",
+      "ok": "ok",
+      "poor": "poor"
+    },
+    "cardinal": {
+      "n": "N",
+      "ne": "NE",
+      "e": "E",
+      "se": "SE",
+      "s": "S",
+      "sw": "SW",
+      "w": "W",
+      "nw": "NW"
+    },
     "noFix": "Waiting for a GPS fix…",
     "off": "Sensors off",
     "noCompass": "No compass data",
@@ -167,8 +256,15 @@
     "errorHttp": "server responded with HTTP {{status}}",
     "errorNetwork": "network error ({{message}})"
   },
-  "map": { "label": "Map of accessible walking routes", "zoomIn": "Zoom in", "zoomOut": "Zoom out" },
-  "units": { "m": "m", "min": "min" },
+  "map": {
+    "label": "Map of accessible walking routes",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out"
+  },
+  "units": {
+    "m": "m",
+    "min": "min"
+  },
   "route": {
     "open": "Plan route",
     "title": "Plan a route",
@@ -221,7 +317,12 @@
       "badParams": "The route request was invalid. Check the profile, risk and time.",
       "generic": "Could not get routes. The SAMAAN API is unreachable or returned an error."
     },
-    "kind": { "anchor": "Landmark", "place": "Place", "street": "Street", "demo": "Demo" },
+    "kind": {
+      "anchor": "Landmark",
+      "place": "Place",
+      "street": "Street",
+      "demo": "Demo"
+    },
     "compareTitle": "Three routes compared",
     "cardsLabel": "Compared routes",
     "tabsLabel": "Route cards",
@@ -229,7 +330,10 @@
     "departureHour": "Leaving around {{hour}}:00",
     "snapped": "{{field}} moved {{m}} m to the nearest footpath.",
     "mode": {
-      "shortest": { "title": "Shortest", "explain": "What a normal map does: fastest for a walker, ignores barriers." },
+      "shortest": {
+        "title": "Shortest",
+        "explain": "What a normal map does: fastest for a walker, ignores barriers."
+      },
       "naive_accessible": {
         "title": "Naive accessible",
         "explain": "Avoids known barriers but treats never-seen footpaths as clear."
@@ -267,5 +371,153 @@
     "summary": "{{title}} route: {{length}} metres, {{minutes}} minutes, {{verified}} percent checked, {{barriers}}.",
     "summaryNone": "{{title}}: no route for this profile.",
     "mapSelected": "{{title}} route highlighted on the map."
+  },
+  "user": {
+    "title": "Who are you?",
+    "intro": "Reports and votes carry a display name so the community can build trust. No password needed.",
+    "name": "Display name",
+    "namePlaceholder": "e.g. Riya",
+    "profile": "How do you usually move?",
+    "create": "Continue",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "error": "Could not create the user. The SAMAAN API is unreachable or returned an error.",
+    "nameRequired": "Enter a display name first.",
+    "chip": "You: {{name}}",
+    "trust": "Trust {{score}} · {{level}}",
+    "level": {
+      "new": "new",
+      "regular": "regular",
+      "trusted": "trusted"
+    },
+    "change": "Change",
+    "needed": "Tell us who you are to continue.",
+    "team": "I am on the SAMAAN team",
+    "teamHint": "Team members start trusted, so one vote can verify a report during the demo."
+  },
+  "report": {
+    "fab": "Report a barrier",
+    "title": "Report a barrier",
+    "titleFixed": "Report as fixed",
+    "intro": "Take a photo where you stand. Other citizens will validate it; verified reports update the map and routes.",
+    "introFixed": "Confirm this barrier is gone with a photo of the spot. After validation it is removed from the map and routes.",
+    "target": "Barrier being reported as fixed",
+    "gps": "Your position",
+    "gpsWaiting": "Getting your position…",
+    "gpsFix": "{{lat}}, {{lon}} (±{{accuracy}} m, {{quality}})",
+    "gpsNone": "No GPS position. Allow location access; the report needs it.",
+    "photo": "Photo",
+    "photoOptional": "optional, strongly encouraged",
+    "photoRequired": "required",
+    "takePhoto": "Take photo",
+    "retake": "Retake",
+    "photoTaken": "Photo taken.",
+    "photoAlt": "Your photo of the barrier",
+    "noCamera": "The live camera is not available here (it needs HTTPS or localhost and camera permission); you can still choose or take a photo below.",
+    "class": "What is it?",
+    "classDetector": "Common barriers",
+    "classOther": "Other",
+    "severity": "How bad is it?",
+    "severityWord": {
+      "1": "Minor",
+      "2": "Low",
+      "3": "Moderate",
+      "4": "High",
+      "5": "Impassable"
+    },
+    "note": "Note (optional)",
+    "notePlaceholder": "e.g. blocks the whole footpath after 6 pm",
+    "submit": "Send report",
+    "sending": "Sending report…",
+    "sent": "Report sent, pending validation.",
+    "sentFixed": "Fix reported, pending validation.",
+    "prescreen": "Our detector also sees: {{name}} ({{score}})",
+    "prescreenNone": "Detector did not recognise it; validation needed.",
+    "duplicate": "Looks like known barrier #{{id}}; your report adds evidence to it.",
+    "another": "Report another",
+    "done": "Done",
+    "errors": {
+      "noUser": "Tell us who you are first.",
+      "noClass": "Choose what the barrier is.",
+      "noPhoto": "A photo is required to report a fix.",
+      "noGps": "Waiting for a GPS position; try again in a moment.",
+      "rateLimit": "Too many reports in a short time. Please wait a minute and try again.",
+      "gpsOffset": "Your photo location is more than 50 m from where you are. Walk closer to the barrier and try again.",
+      "notFound": "That barrier no longer exists on the server.",
+      "invalid": "The report was rejected as invalid. Check the class, severity and photo.",
+      "generic": "Could not send the report. The SAMAAN API is unreachable or returned an error."
+    },
+    "pendingMarker": "Pending report (not yet validated)"
+  },
+  "validate": {
+    "title": "Validate reports",
+    "intro": "Look at the photo and say whether the report matches what you see. Agreement from several people verifies it and updates the map and routes.",
+    "loading": "Loading reports…",
+    "nearby": "Showing pending reports within 300 m of you.",
+    "fallbackNoGps": "Your location is unavailable, so these are the newest pending reports anywhere.",
+    "fallbackNone": "No pending reports within 300 m, so these are the newest pending reports anywhere.",
+    "progress": "Report {{index}} of {{total}}",
+    "empty": "Nothing to validate nearby.",
+    "reload": "Check again",
+    "error": "Could not load reports. The SAMAAN API is unreachable or returned an error.",
+    "noPhoto": "No photo with this report.",
+    "note": "Note",
+    "photoAlt": "Report photo: {{name}}",
+    "kindFixed": "Reported as fixed",
+    "kindBarrier": "New barrier",
+    "fixedOf": "Says this barrier is gone: {{name}} (severity {{severity}})",
+    "distanceLabel": "Distance",
+    "distance": "{{m}} m from you",
+    "reported": "Reported {{time}}",
+    "votesSoFar_one": "{{count}} vote so far",
+    "votesSoFar_other": "{{count}} votes so far",
+    "prescreen": "Detector score {{score}}",
+    "miniMap": "Map of the report position",
+    "question": "Does this match what you see?",
+    "agree": "Agree",
+    "disagree": "Disagree",
+    "unsure": "Unsure",
+    "keyHint": "Keyboard: press 1 to agree, 2 to disagree, 3 for unsure.",
+    "key": "Key {{key}}",
+    "voting": "Sending your vote…",
+    "voted": "Vote saved. Score {{score}}, {{count}} votes, status: {{status}}.",
+    "resolvedVerified": "Verified — the map and routes were updated.",
+    "resolvedRejected": "Rejected — the report was closed.",
+    "resolvedFixed": "Fixed — the barrier was removed from the map and routes.",
+    "next": "Next report",
+    "ownReport": "This is your own report; you cannot vote on it.",
+    "alreadyResolved": "This report was already resolved by others.",
+    "voteError": "Could not save the vote. The SAMAAN API is unreachable or returned an error.",
+    "status": {
+      "pending": "Pending",
+      "verified": "Verified",
+      "rejected": "Rejected",
+      "fixed": "Fixed"
+    }
+  },
+  "missions": {
+    "title": "Missions",
+    "intro": "A mission is a stretch of footpath nobody has photographed yet but many routes need; walking it with the camera fills the biggest gap in the map.",
+    "loading": "Loading missions…",
+    "empty": "No missions right now. Recompute to look for gaps.",
+    "error": "Could not load missions. The SAMAAN API is unreachable or returned an error.",
+    "rank": "Mission {{rank}}",
+    "length": "{{m}} m",
+    "needed_one": "needed by {{count}} route",
+    "needed_other": "needed by {{count}} routes",
+    "status": {
+      "open": "Open",
+      "done": "Done"
+    },
+    "show": "Show on map",
+    "walk": "Walk this",
+    "recompute": "Recompute",
+    "recomputing": "Recomputing missions (about 10 s)…",
+    "recomputed": "Missions recomputed from {{routes}} sampled routes.",
+    "recomputedNoCount": "Missions recomputed.",
+    "recomputeError": "Could not recompute missions. The SAMAAN API is unreachable or returned an error.",
+    "onMap": "Mission {{rank}}: {{name}}",
+    "clearMap": "Hide mission",
+    "walkHint": "Opens the capture page with session id mission-{{id}}."
   }
 }

@@ -26,6 +26,9 @@ import {
   type ImageProps,
   type LayerData,
   type LayerKey,
+  type MissionFeature,
+  type ReportItem,
+  type ReportTarget,
   type RouteMode,
   type RouteResponse,
   type Zone,
@@ -57,6 +60,12 @@ interface MapViewProps {
   destination: PlannerPoint | null;
   pickMode: PointRole | null;
   onPick: (role: PointRole, lat: number, lon: number) => void;
+  /** Reports sent this session that are still pending: hollow markers until validated. */
+  pendingReports: ReportItem[];
+  /** Mission highlighted from the Missions page (thick dashed grey line + label). */
+  mission: MissionFeature | null;
+  /** "Report as fixed" pressed in a barrier popup. */
+  onReportFixed: (target: ReportTarget) => void;
 }
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -77,10 +86,12 @@ const LAYER_IDS: Record<LayerKey, string[]> = {
 };
 
 /** Point layers that open popups; a coverage click is ignored when one of these is hit too. */
-const POINT_CLICK_LAYERS = ['barriers', 'anchors', 'demo-endpoints', 'images'];
+const POINT_CLICK_LAYERS = ['barriers', 'anchors', 'demo-endpoints', 'images', 'pending-reports'];
 
-// Route planner sources/layers (not user-toggleable; driven by the planner state).
-const ROUTE_SOURCES = ['routes', 'route-endpoints', 'route-unknown', 'route-barriers'] as const;
+// Route planner / citizen-loop sources (not user-toggleable; driven by app state).
+const ROUTE_SOURCES = ['routes', 'route-endpoints', 'route-unknown', 'route-barriers', 'pending-reports', 'missions'] as const;
+export const PENDING_REPORT_COLOUR = '#0b5fa5';
+export const MISSION_COLOUR = '#424242';
 const ROUTE_LINE_LAYERS: Record<RouteMode, string[]> = {
   shortest: ['route-shortest'],
   naive_accessible: ['route-naive'],
@@ -171,6 +182,38 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#c62828', 'line-width': 6, 'line-dasharray': [0.1, 1.8] },
   });
+
+  // --- Highlighted mission: thick dashed grey line with a white casing and the street name along it ---
+  add({
+    id: 'missions-casing',
+    type: 'line',
+    source: 'missions',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 13 },
+  });
+  add({
+    id: 'missions',
+    type: 'line',
+    source: 'missions',
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': MISSION_COLOUR, 'line-width': 8, 'line-dasharray': [1.5, 1] },
+  });
+  if (hasGlyphs) {
+    add({
+      id: 'missions-label',
+      type: 'symbol',
+      source: 'missions',
+      layout: {
+        'symbol-placement': 'line',
+        'text-field': ['get', nameProp(lang)],
+        'text-font': TEXT_FONT,
+        'text-size': 13,
+        'text-offset': [0, -1.4],
+        'text-optional': true,
+      },
+      paint: { 'text-color': '#111111', 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+    });
+  }
 
   // --- Compared routes: three styles that differ in width AND dash, not only colour ---
   const sh = ROUTE_STYLES.shortest;
@@ -417,6 +460,27 @@ function addRouteTopLayers(map: MapLibreMap): void {
       'circle-stroke-width': 3,
     },
   });
+  // Pending reports (this session, not yet validated): hollow ring with a "?" so they are not mistaken for barriers.
+  add({
+    id: 'pending-reports',
+    type: 'circle',
+    source: 'pending-reports',
+    paint: {
+      'circle-radius': 10,
+      'circle-color': 'rgba(255,255,255,0.85)',
+      'circle-stroke-color': PENDING_REPORT_COLOUR,
+      'circle-stroke-width': 3,
+    },
+  });
+  if (hasGlyphs) {
+    add({
+      id: 'pending-reports-label',
+      type: 'symbol',
+      source: 'pending-reports',
+      layout: { 'text-field': '?', 'text-font': TEXT_FONT, 'text-size': 13, 'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': PENDING_REPORT_COLOUR },
+    });
+  }
   if (hasGlyphs) {
     add({
       id: 'route-endpoints-label',
@@ -490,6 +554,17 @@ function routeBarriersToFC(routes: RouteResponse | null, selected: RouteMode | n
   };
 }
 
+function pendingToFC(reports: ReportItem[]): FeatureCollection<Point> {
+  return {
+    type: 'FeatureCollection',
+    features: reports.map((r) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
+      properties: { id: r.id, kind: r.kind, class_id: r.class_id, name_en: r.name_en, name_hi: r.name_hi, severity: r.severity, status: r.status },
+    })),
+  };
+}
+
 function boundsOf(lines: LineString[]): [[number, number], [number, number]] | null {
   let w = Infinity;
   let s = Infinity;
@@ -551,7 +626,11 @@ function normaliseBarrier(raw: Record<string, unknown>): BarrierProps {
   return p;
 }
 
-function barrierPopupContent(p: BarrierProps, lang: Lang, t: TFunction): HTMLElement {
+interface PopupActions {
+  reportFixed?: (target: ReportTarget) => void;
+}
+
+function barrierPopupContent(p: BarrierProps, lang: Lang, t: TFunction, actions: PopupActions = {}): HTMLElement {
   const root = el('div', 'popup');
   root.lang = lang;
   root.appendChild(el('h3', 'popup__title', localizedName(p, lang)));
@@ -580,6 +659,32 @@ function barrierPopupContent(p: BarrierProps, lang: Lang, t: TFunction): HTMLEle
     root.appendChild(strip);
   }
   if (p.synthetic) root.appendChild(el('span', 'badge badge--synthetic', t('badge.synthetic')));
+  if (actions.reportFixed && p.status === 'active') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn--small popup__action';
+    btn.textContent = t('report.titleFixed');
+    btn.setAttribute('aria-label', `${t('report.titleFixed')}: ${localizedName(p, lang)}`);
+    const target: ReportTarget = { id: p.id, class_id: p.class, name_en: p.name_en, name_hi: p.name_hi, severity: p.severity };
+    btn.addEventListener('click', () => actions.reportFixed?.(target));
+    root.appendChild(btn);
+  }
+  return root;
+}
+
+function pendingPopupContent(raw: Record<string, unknown>, lang: Lang, t: TFunction): HTMLElement {
+  const root = el('div', 'popup');
+  root.lang = lang;
+  const name = localizedName({ name_en: String(raw.name_en ?? ''), name_hi: typeof raw.name_hi === 'string' ? raw.name_hi : null }, lang);
+  root.appendChild(el('h3', 'popup__title', name || t('report.pendingMarker')));
+  const dl = el('dl', 'popup__list');
+  row(dl, t('popup.kind'), raw.kind === 'fixed' ? t('validate.kindFixed') : t('validate.kindBarrier'));
+  row(dl, t('popup.class'), t(`barrierClass.${String(raw.class_id)}`, { defaultValue: String(raw.class_id) }));
+  const sev = Number(raw.severity);
+  if (Number.isFinite(sev)) row(dl, t('severity.label'), `${sev} – ${t(`report.severityWord.${sev}`)}`);
+  row(dl, t('popup.status'), t('validate.status.pending'));
+  root.appendChild(dl);
+  root.appendChild(el('p', 'popup__note', t('report.pendingMarker')));
   return root;
 }
 
@@ -695,6 +800,9 @@ export default function MapView({
   destination,
   pickMode,
   onPick,
+  pendingReports,
+  mission,
+  onReportFixed,
 }: MapViewProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -709,12 +817,23 @@ export default function MapView({
   const pickRef = useRef(pickMode);
   const onPickRef = useRef(onPick);
   const onSelectRouteRef = useRef(onSelectRoute);
+  const onReportFixedRef = useRef(onReportFixed);
   langRef.current = lang;
   tRef.current = t;
   errorRef.current = onBasemapError;
   pickRef.current = pickMode;
   onPickRef.current = onPick;
   onSelectRouteRef.current = onSelectRoute;
+  onReportFixedRef.current = onReportFixed;
+
+  /** Popup actions close the popup first so focus does not end up in a removed node. */
+  const popupActions = (): PopupActions => ({
+    reportFixed: (target) => {
+      popupRef.current?.remove();
+      popupRef.current = null;
+      onReportFixedRef.current(target);
+    },
+  });
 
   const openPopup = (map: MapLibreMap, lngLat: [number, number], content: HTMLElement) => {
     if (pickRef.current) return; // the click is setting a planner point instead
@@ -811,7 +930,12 @@ export default function MapView({
       map.on('click', 'barriers', (e) => {
         const f = first(e);
         if (!f) return;
-        openPopup(map, coords(f), barrierPopupContent(normaliseBarrier(f.properties), langRef.current, tRef.current));
+        openPopup(map, coords(f), barrierPopupContent(normaliseBarrier(f.properties), langRef.current, tRef.current, popupActions()));
+      });
+      map.on('click', 'pending-reports', (e) => {
+        const f = first(e);
+        if (!f) return;
+        openPopup(map, coords(f), pendingPopupContent(f.properties, langRef.current, tRef.current));
       });
       map.on('click', 'anchors', (e) => {
         const f = first(e);
@@ -922,6 +1046,24 @@ export default function MapView({
     map.fitBounds(b, { padding, duration: prefersReducedMotion() ? 0 : 700, maxZoom: 18 });
   }, [routes, selectedRoute, ready]);
 
+  // Pending reports from this session.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    (map.getSource('pending-reports') as GeoJSONSource | undefined)?.setData(pendingToFC(pendingReports));
+  }, [pendingReports, ready]);
+
+  // Highlighted mission: draw it and fit the map to it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const fc: FeatureCollection = { type: 'FeatureCollection', features: mission ? [mission] : [] };
+    (map.getSource('missions') as GeoJSONSource | undefined)?.setData(fc);
+    if (!mission) return;
+    const b = boundsOf([mission.geometry]);
+    if (b) map.fitBounds(b, { padding: 60, duration: prefersReducedMotion() ? 0 : 700, maxZoom: 17.5 });
+  }, [mission, ready]);
+
   // Pulse the barrier rings (static when the user prefers reduced motion).
   useEffect(() => {
     const map = mapRef.current;
@@ -963,6 +1105,7 @@ export default function MapView({
     const map = mapRef.current;
     if (!map || !ready) return;
     if (map.getLayer('anchors-label')) map.setLayoutProperty('anchors-label', 'text-field', ['get', nameProp(lang)]);
+    if (map.getLayer('missions-label')) map.setLayoutProperty('missions-label', 'text-field', ['get', nameProp(lang)]);
     popupRef.current?.remove();
     popupRef.current = null;
   }, [lang, ready]);
@@ -979,7 +1122,7 @@ export default function MapView({
       duration: prefersReducedMotion() ? 0 : 900,
       essential: true,
     });
-    openPopup(map, target, barrierPopupContent(selection.feature.properties, langRef.current, tRef.current));
+    openPopup(map, target, barrierPopupContent(selection.feature.properties, langRef.current, tRef.current, popupActions()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, ready]);
 

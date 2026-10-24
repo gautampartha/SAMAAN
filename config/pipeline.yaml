@@ -95,9 +95,14 @@ reach:
   default_cutoff_min: 10
   fix_ranking_k: 5
 
-missions:
+missions:                    # plan 6.9
   random_od_pairs: 500
   top_n: 10
+  random_seed: 7
+  profile: wheelchair_manual
+  risk: balanced
+  min_od_distance_m: 200
+  max_od_distance_m: 1500
 
 ride:
   accel_hz: 50
@@ -106,9 +111,31 @@ ride:
   map_match_distance_m: 10
   verified_fraction_of_edge: 0.8
 
-reports:
+reports:                     # plan 6.8. team_estimate unless noted
   max_photo_gps_offset_m: 50
   rate_limit_per_hour: 30
+  duplicate_distance_m: 4.0
+  queue_radius_m: 300
+  default_hfov_deg: 65
+  base_confidence: 0.4          # starting barrier confidence for a verified report without prescreen
+  prescreen:
+    weights: "ml/runs/karkarduma_v1/weights/best.pt"   # used when the file exists
+    match_bonus: 0.25           # detector agrees with the reported class
+    mismatch_penalty: 0.1       # detector sees nothing of that class
+    min_score: 0.3
+  votes:
+    weights: { agree: 1.0, disagree: -1.0, unsure: 0.0 }
+    verify_threshold: 0.6       # Σ(vote × trust) at or above -> verified: two new users, or one team/trusted user
+    reject_threshold: -0.6
+  trust:
+    initial: 0.3
+    team_initial: 0.8           # users created with team=true (the demo crew) verify alone
+    min: 0.05
+    max: 1.0
+    reporter_verified_gain: 0.1
+    reporter_rejected_loss: 0.15
+    voter_consensus_gain: 0.05
+    voter_dissent_loss: 0.05
 
 # Seed (P0 only). Everything produced with these is synthetic=true.
 seed:

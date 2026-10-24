@@ -9,6 +9,8 @@ interface RouteCompareProps {
   selected: RouteMode | null;
   lang: Lang;
   onSelect: (mode: RouteMode) => void;
+  /** Opens the report sheet with kind=fixed for this barrier. */
+  onReportFixed: (barrier: RouteBarrier) => void;
 }
 
 function pct(n: number): number {
@@ -43,7 +45,7 @@ function VerifiedBar({ route }: { route: RouteResult }) {
 
 // ---------- One barrier row ----------
 
-function BarrierRow({ barrier, lang }: { barrier: RouteBarrier; lang: Lang }) {
+function BarrierRow({ barrier, lang, onReportFixed }: { barrier: RouteBarrier; lang: Lang; onReportFixed: (b: RouteBarrier) => void }) {
   const { t } = useTranslation();
   const name = localizedName(barrier, lang);
   const photo = barrier.photo_urls?.[0];
@@ -71,6 +73,10 @@ function BarrierRow({ barrier, lang }: { barrier: RouteBarrier; lang: Lang }) {
             {t('route.impassableFlag')}
           </span>
         )}
+        <button type="button" className="btn btn--small rb__fixed" onClick={() => onReportFixed(barrier)} aria-label={`${t('report.titleFixed')}: ${name}`}>
+          <span aria-hidden="true">✓ </span>
+          {t('report.titleFixed')}
+        </button>
       </div>
     </li>
   );
@@ -85,9 +91,10 @@ interface CardProps {
   lang: Lang;
   onSelect: () => void;
   cardRef: (el: HTMLElement | null) => void;
+  onReportFixed: (b: RouteBarrier) => void;
 }
 
-function RouteCard({ mode, route, selected, lang, onSelect, cardRef }: CardProps) {
+function RouteCard({ mode, route, selected, lang, onSelect, cardRef, onReportFixed }: CardProps) {
   const { t } = useTranslation();
   const style = ROUTE_STYLES[mode];
   const title = t(`route.mode.${mode}.title`);
@@ -155,7 +162,7 @@ function RouteCard({ mode, route, selected, lang, onSelect, cardRef }: CardProps
           {route.barriers.length > 0 ? (
             <ul className="rb-list">
               {route.barriers.map((b) => (
-                <BarrierRow key={b.id} barrier={b} lang={lang} />
+                <BarrierRow key={b.id} barrier={b} lang={lang} onReportFixed={onReportFixed} />
               ))}
             </ul>
           ) : (
@@ -181,7 +188,7 @@ function RouteCard({ mode, route, selected, lang, onSelect, cardRef }: CardProps
 
 // ---------- Comparison: tabs + snap strip (phone) / three columns (desktop) ----------
 
-export default function RouteCompare({ result, selected, lang, onSelect }: RouteCompareProps) {
+export default function RouteCompare({ result, selected, lang, onSelect, onReportFixed }: RouteCompareProps) {
   const { t } = useTranslation();
   const stripRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Partial<Record<RouteMode, HTMLElement | null>>>({});
@@ -282,6 +289,7 @@ export default function RouteCompare({ result, selected, lang, onSelect }: Route
               cardRef={(el) => {
                 cardRefs.current[mode] = el;
               }}
+              onReportFixed={onReportFixed}
             />
           </div>
         ))}

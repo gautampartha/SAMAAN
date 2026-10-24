@@ -133,10 +133,25 @@ export class ApiError extends Error {
   constructor(
     public readonly path: string,
     public readonly status: number,
+    /** The API's `{detail: "..."}` string when the error body carried one (e.g. "rate_limit", "gps_offset"). */
+    public readonly detail: string | null = null,
   ) {
-    super(`${path}: HTTP ${status}`);
+    super(`${path}: HTTP ${status}${detail ? ` (${detail})` : ''}`);
     this.name = 'ApiError';
   }
+}
+
+/** Read `{detail: string}` from an error body; anything else yields null. */
+async function readDetail(res: Response): Promise<string | null> {
+  try {
+    const body: unknown = await res.json();
+    if (body && typeof body === 'object' && typeof (body as { detail?: unknown }).detail === 'string') {
+      return (body as { detail: string }).detail;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null;
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -144,7 +159,18 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
     signal,
     headers: { Accept: 'application/json' },
   });
-  if (!res.ok) throw new ApiError(path, res.status);
+  if (!res.ok) throw new ApiError(path, res.status, await readDetail(res));
+  return (await res.json()) as T;
+}
+
+async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    signal,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(path, res.status, await readDetail(res));
   return (await res.json()) as T;
 }
 
@@ -362,3 +388,235 @@ export function localizedName(props: { name_en: string; name_hi?: string | null 
 export function localized(name: LocalizedName, lang: Lang): string {
   return (lang === 'hi' && name.hi) || name.en;
 }
+
+// ---------- P7 citizen loop: users, reports, votes, missions ----------
+
+/** Classes a citizen can report but the detector does not emit. */
+export type ReportOnlyClassId =
+  | 'no_footpath'
+  | 'footpath_end'
+  | 'waterlogging'
+  | 'construction'
+  | 'lift_out_of_service'
+  | 'foot_overbridge_stairs_only';
+
+export type ReportClassId = BarrierClassId | ReportOnlyClassId;
+
+export const BARRIER_CLASS_IDS: readonly BarrierClassId[] = [
+  'steps_or_high_kerb',
+  'parked_vehicle',
+  'open_drain',
+  'curb_ramp',
+  'broken_surface',
+  'fixed_obstacle',
+  'vendor_encroachment',
+  'bike_barrier',
+] as const;
+
+export const REPORT_ONLY_CLASS_IDS: readonly ReportOnlyClassId[] = [
+  'no_footpath',
+  'footpath_end',
+  'waterlogging',
+  'construction',
+  'lift_out_of_service',
+  'foot_overbridge_stairs_only',
+] as const;
+
+export const SEVERITIES: readonly Severity[] = [1, 2, 3, 4, 5] as const;
+
+export interface User {
+  id: number | string;
+  display_name: string;
+  /** 0-1 */
+  trust_score: number;
+  profile: Profile;
+  language: Lang;
+  n_reports?: number;
+  n_votes?: number;
+}
+
+export interface NewUser {
+  display_name: string;
+  profile: Profile;
+  language: Lang;
+  /** Demo crew: starts trusted so one vote verifies (config reports.trust.team_initial). */
+  team?: boolean;
+}
+
+export type ReportKind = 'barrier' | 'fixed';
+export type ReportStatus = 'pending' | 'verified' | 'rejected' | 'fixed';
+export type VoteValue = 'agree' | 'disagree' | 'unsure';
+export const VOTE_VALUES: readonly VoteValue[] = ['agree', 'disagree', 'unsure'] as const;
+
+export interface VoteCounts {
+  agree: number;
+  disagree: number;
+  unsure: number;
+}
+
+export interface ReportTarget {
+  id: number;
+  class_id: ReportClassId | (string & {});
+  name_en: string;
+  name_hi: string;
+  severity: Severity;
+}
+
+export interface ReportItem {
+  id: number;
+  kind: ReportKind;
+  status: ReportStatus;
+  class_id: ReportClassId | (string & {});
+  name_en: string;
+  name_hi: string;
+  severity: Severity;
+  note: string | null;
+  lat: number;
+  lon: number;
+  edge_id: number | null;
+  side: 'L' | 'R' | 'none' | null;
+  snap_confidence: number | null;
+  model_prescreen_score: number | null;
+  duplicate_of_barrier_id: number | null;
+  barrier_id: number | null;
+  target_barrier_id: number | null;
+  /** Relative or absolute; use `photoUrl`. */
+  photo_url: string | null;
+  score: number;
+  n_votes: number;
+  votes: VoteCounts;
+  my_vote: VoteValue | null;
+  /** Present when `near_lat`/`near_lon` were passed. */
+  distance_m?: number;
+  user_id: number | string;
+  created_at: string;
+  target_barrier: ReportTarget | null;
+}
+
+export interface ReportList {
+  count: number;
+  results: ReportItem[];
+}
+
+export interface ReportInput {
+  /** JPEG; strongly encouraged for barriers, required for `kind: 'fixed'`. */
+  photo: Blob | null;
+  user_id: number | string;
+  class_id: ReportClassId;
+  severity: Severity;
+  note?: string;
+  /** Barrier / photo position. */
+  lat: number;
+  lon: number;
+  heading_deg?: number | null;
+  pitch_deg?: number | null;
+  hfov_deg?: number | null;
+  captured_at?: string;
+  /** The phone's position when submitting; the API rejects when > 50 m from lat/lon. */
+  device_lat?: number;
+  device_lon?: number;
+  kind: ReportKind;
+  target_barrier_id?: number;
+}
+
+export interface VoteResponse {
+  report_id: number;
+  status: ReportStatus;
+  score: number;
+  n_votes: number;
+  votes: VoteCounts;
+  /** True when the vote changed barriers/footpaths/routes server-side. */
+  resolved: boolean;
+  barrier_id: number | null;
+  voter_trust_score: number;
+}
+
+export interface ReportQuery {
+  status?: ReportStatus;
+  near?: { lat: number; lon: number; radius_m: number } | null;
+  user_id?: number | string;
+  limit?: number;
+}
+
+export type MissionStatus = 'open' | 'done';
+
+export interface MissionProps {
+  id: number;
+  rank: number;
+  priority: number;
+  n_routes: number;
+  length_m: number;
+  status: MissionStatus | (string & {});
+  edge_ids: number[];
+  name_en: string;
+  name_hi: string;
+  /** [lon, lat] */
+  centroid: [number, number];
+  synthetic: boolean;
+}
+
+export type MissionFC = FeatureCollection<LineString, MissionProps>;
+export type MissionFeature = Feature<LineString, MissionProps>;
+
+export interface MissionsRecompute {
+  missions: unknown;
+  routes_sampled?: number;
+  [key: string]: unknown;
+}
+
+export const userApi = {
+  create: (input: NewUser, signal?: AbortSignal) => postJson<User>('/users', input, signal),
+  get: (id: number | string, signal?: AbortSignal) => getJson<User>(`/users/${encodeURIComponent(String(id))}`, signal),
+};
+
+export const reportApi = {
+  create: async (input: ReportInput, signal?: AbortSignal): Promise<ReportItem> => {
+    const fd = new FormData();
+    if (input.photo) fd.append('photo', input.photo, `report-${Date.now()}.jpg`);
+    fd.append('user_id', String(input.user_id));
+    fd.append('class_id', input.class_id);
+    fd.append('severity', String(input.severity));
+    if (input.note && input.note.trim()) fd.append('note', input.note.trim());
+    fd.append('lat', String(input.lat));
+    fd.append('lon', String(input.lon));
+    if (typeof input.heading_deg === 'number') fd.append('heading_deg', String(input.heading_deg));
+    if (typeof input.pitch_deg === 'number') fd.append('pitch_deg', String(input.pitch_deg));
+    if (typeof input.hfov_deg === 'number') fd.append('hfov_deg', String(input.hfov_deg));
+    if (input.captured_at) fd.append('captured_at', input.captured_at);
+    if (typeof input.device_lat === 'number' && typeof input.device_lon === 'number') {
+      fd.append('device_lat', String(input.device_lat));
+      fd.append('device_lon', String(input.device_lon));
+    }
+    fd.append('kind', input.kind);
+    if (input.kind === 'fixed' && typeof input.target_barrier_id === 'number') {
+      fd.append('target_barrier_id', String(input.target_barrier_id));
+    }
+    const res = await fetch(`${API_URL}/reports`, { method: 'POST', body: fd, signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new ApiError('/reports', res.status, await readDetail(res));
+    return (await res.json()) as ReportItem;
+  },
+  list: (query: ReportQuery, signal?: AbortSignal) => {
+    const q = new URLSearchParams();
+    q.set('status', query.status ?? 'pending');
+    if (query.near) {
+      q.set('near_lat', String(query.near.lat));
+      q.set('near_lon', String(query.near.lon));
+      q.set('radius_m', String(query.near.radius_m));
+    }
+    if (query.user_id !== undefined) q.set('user_id', String(query.user_id));
+    q.set('limit', String(query.limit ?? 20));
+    return getJson<ReportList>(`/reports?${q.toString()}`, signal);
+  },
+  get: (id: number, signal?: AbortSignal) => getJson<ReportItem>(`/reports/${id}`, signal),
+  vote: (reportId: number, userId: number | string, value: VoteValue, signal?: AbortSignal) =>
+    postJson<VoteResponse>(`/reports/${reportId}/votes`, { user_id: userId, value }, signal),
+};
+
+export const missionApi = {
+  list: (limit = 10, signal?: AbortSignal) => getJson<MissionFC>(`/missions?limit=${limit}`, signal),
+  recompute: async (signal?: AbortSignal): Promise<MissionsRecompute> => {
+    const res = await fetch(`${API_URL}/missions/recompute`, { method: 'POST', signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new ApiError('/missions/recompute', res.status, await readDetail(res));
+    return (await res.json()) as MissionsRecompute;
+  },
+};

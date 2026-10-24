@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CaptureUpload } from '../api';
+import { imageSize, useCamera } from '../camera';
 import { cardinal, geoQuality, haversineM, useSensors, type GeoFix, type Orientation } from '../sensors';
 import { uploadQueue, useUploadQueue, type QueueError } from '../uploadQueue';
 
@@ -8,7 +9,9 @@ import { uploadQueue, useUploadQueue, type QueueError } from '../uploadQueue';
 
 const KEY_HFOV = 'samaan.capture.hfov';
 const KEY_INTERVAL = 'samaan.capture.interval';
-const KEY_SESSION = 'samaan.capture.session';
+/** Also written by the Missions page ("Walk this" prefills `mission-<id>`). */
+export const CAPTURE_SESSION_KEY = 'samaan.capture.session';
+const KEY_SESSION = CAPTURE_SESSION_KEY;
 const KEY_NOTE = 'samaan.capture.note';
 
 const HFOV_DEFAULT = 65;
@@ -16,7 +19,6 @@ const HFOV_MIN = 30;
 const HFOV_MAX = 120;
 const INTERVAL_DEFAULT = 8;
 const AUTO_MAX_ACCURACY_M = 25;
-const JPEG_QUALITY = 0.85;
 const LIVE_REGION_INTERVAL_MS = 2000;
 
 function readStored(key: string): string | null {
@@ -50,46 +52,6 @@ export function defaultSessionId(now = new Date()): string {
   return `walk-${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}`;
 }
 
-// ---------- Camera helpers ----------
-
-type CameraState = 'starting' | 'live' | 'fallback';
-
-function getUserMediaAvailable(): boolean {
-  return (
-    typeof navigator !== 'undefined' &&
-    Boolean(navigator.mediaDevices?.getUserMedia) &&
-    (typeof window === 'undefined' || window.isSecureContext)
-  );
-}
-
-function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('toBlob returned null'))), 'image/jpeg', JPEG_QUALITY);
-  });
-}
-
-async function imageSize(blob: Blob): Promise<{ width: number; height: number }> {
-  if (typeof createImageBitmap === 'function') {
-    const bmp = await createImageBitmap(blob);
-    const size = { width: bmp.width, height: bmp.height };
-    bmp.close();
-    return size;
-  }
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('image decode failed'));
-    };
-    img.src = url;
-  });
-}
-
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
@@ -113,42 +75,8 @@ export default function CapturePage() {
   useEffect(() => writeStored(KEY_SESSION, sessionId), [sessionId]);
   useEffect(() => writeStored(KEY_NOTE, note), [note]);
 
-  // Camera
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [camera, setCamera] = useState<CameraState>(() => (getUserMediaAvailable() ? 'starting' : 'fallback'));
-  const [cameraError, setCameraError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!getUserMediaAvailable()) return;
-    let cancelled = false;
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-      .then((stream) => {
-        if (cancelled) {
-          stream.getTracks().forEach((tr) => tr.stop());
-          return;
-        }
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (video) {
-          video.muted = true;
-          video.srcObject = stream;
-          video.play().catch(() => undefined);
-        }
-        setCamera('live');
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setCameraError(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
-        setCamera('fallback');
-      });
-    return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((tr) => tr.stop());
-      streamRef.current = null;
-    };
-  }, []);
+  // Camera (shared hook; the page always wants the preview running)
+  const { videoRef, state: camera, error: cameraError, grabFrame } = useCamera(true);
 
   // Capture
   const [flash, setFlash] = useState(false);
@@ -195,25 +123,15 @@ export default function CapturePage() {
   );
 
   const takePhoto = useCallback(async () => {
-    const video = videoRef.current;
     const fix = sensors.fixRef.current;
-    if (!video || camera !== 'live' || capturingRef.current) return;
+    if (camera !== 'live' || capturingRef.current) return;
     if (!fix) {
       setCaptureError('noFix');
       return;
     }
     capturingRef.current = true;
     try {
-      const width = video.videoWidth;
-      const height = video.videoHeight;
-      if (!width || !height) throw new Error('video has no frame yet');
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('2d context unavailable');
-      ctx.drawImage(video, 0, 0, width, height);
-      const blob = await canvasToJpeg(canvas);
+      const { blob, width, height } = await grabFrame();
       await enqueue(blob, { width, height }, fix);
     } catch (err) {
       console.warn('[capture]', err);
@@ -221,7 +139,7 @@ export default function CapturePage() {
     } finally {
       capturingRef.current = false;
     }
-  }, [camera, enqueue, sensors.fixRef]);
+  }, [camera, enqueue, grabFrame, sensors.fixRef]);
 
   const onFilePicked = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
@@ -306,7 +224,7 @@ export default function CapturePage() {
 
       {/* ---- Preview ---- */}
       <section className={`capture__preview${flash ? ' capture__preview--flash' : ''}`} aria-label={t('capture.preview')}>
-        {camera !== 'fallback' && (
+        {camera !== 'fallback' && camera !== 'off' && (
           <video ref={videoRef} className="capture__video" playsInline muted autoPlay aria-label={t('capture.preview')} />
         )}
         {camera === 'starting' && <p className="capture__overlay">{t('capture.cameraStarting')}</p>}

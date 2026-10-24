@@ -13,7 +13,7 @@ from sqlmodel import Session, select
 
 from api.models import Barrier, Coverage, FootpathEdge
 from common import config
-from common.state import compute_edge_state
+from common.state import compute_edge_state, impassable_for_any_profile
 
 REAL_SOURCES = ("image", "wheel", "report")
 
@@ -35,12 +35,12 @@ def recompute_states(session: Session, now: datetime | None = None, profiles_cfg
         ):
             target[c.edge_id] = c
     by_edge: dict[int, list[dict[str, Any]]] = {}
-    any_synthetic_barrier: set[int] = set()
+    real_blocking: set[int] = set()  # edges with a real (non-synthetic) active barrier that blocks some profile
     for b in session.exec(select(Barrier)).all():
         by_edge.setdefault(b.edge_id, []).append({"class": b.class_id, "severity": b.severity, "status": b.status,
                                                   "confidence": b.confidence})
-        if b.synthetic:
-            any_synthetic_barrier.add(b.edge_id)
+        if not b.synthetic and b.status == "active" and impassable_for_any_profile(profiles_cfg, b.class_id, int(b.severity)):
+            real_blocking.add(b.edge_id)
     counts = {"clear": 0, "blocked": 0, "unknown": 0, "from_real_coverage": 0, "from_seed_coverage": 0}
     for e in edges:
         c = cov_real.get(e.id) or cov_seed.get(e.id)
@@ -50,7 +50,10 @@ def recompute_states(session: Session, now: datetime | None = None, profiles_cfg
         e.state, e.state_confidence = state, conf
         e.last_observed_at = last
         e.observed_by = (c.source if c and c.source in REAL_SOURCES else ("image" if c else None))
-        synthetic = (c is not None and c.source == "seed") or (state == "blocked" and e.id in any_synthetic_barrier)
+        if state == "blocked":
+            synthetic = e.id not in real_blocking  # a real blocking barrier makes the state real
+        else:
+            synthetic = c is not None and c.source == "seed"
         e.state_synthetic = bool(synthetic)
         counts[state] += 1
         if c is not None:
