@@ -23,6 +23,17 @@ xcrun devicectl device process launch --device <iphone udid> ai.samaan.app
 ```
 (`xcrun devicectl list devices` prints the udid.) A personal team's profile lasts 7 days.
 
+## Reaching the API from the phone
+Campus and hackathon Wi-Fi usually isolate devices, so the phone cannot reach the laptop's LAN
+address. Use a tunnel (works from any network, HTTPS):
+```bash
+cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate     # prints https://<random>.trycloudflare.com
+make ios-sync API_URL=https://<random>.trycloudflare.com          # bake it into the app, then build + install
+```
+The quick-tunnel address changes every time cloudflared restarts; keep it running for the whole
+demo, or rebuild after a restart. Alternative without internet dependence: iPhone Personal
+Hotspot over the cable (the Mac gets an "iPhone USB" interface; use that IP as API_URL).
+
 ## Install on the phone (5 minutes)
 1. Start the API so the phone can reach it over Wi-Fi (same network as the laptop):
    ```bash
