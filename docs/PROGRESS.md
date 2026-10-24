@@ -293,6 +293,12 @@ seeded state. That is expected: real coverage arrives with the human tasks below
    copy the client token, then run
    `MAPILLARY_TOKEN='MLY|...' make ingest-mapillary DOWNLOAD=1` and `make coverage`.
    Report the printed counts in this file (they are facts, not synthetic).
+   **Training images from the hackathon venue:** the detector only needs Indian footpath photos,
+   so if the zone has few Mapillary images, pull a wider area for training only:
+   `MAPILLARY_TOKEN='MLY|...' make ingest-mapillary DOWNLOAD=1 BBOX=77.20,28.55,77.40,28.72 MAX=3000`
+   (east Delhi). Those images stay out of zone coverage (they are outside the bbox) but can be
+   labelled and used for training; the importer uses the Mapillary sequence as the street.
+   Also photograph footpaths around the venue with team phones (any Indian street works).
 8. **Photo walks** (2–4 h, two people): serve the app over HTTPS on the phone (see
    web/README.md), open `#/capture`, tap "Enable sensors", set the session id to
    `<street>-<side>` (e.g. `bhartendu-marg-L`), auto-capture every 8 m, and walk **both sides of

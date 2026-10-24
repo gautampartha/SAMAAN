@@ -108,14 +108,17 @@ def download_thumb(url: str, dest: Path) -> bool:
 
 
 def ingest(session: Session, token: str, zone_cfg: dict[str, Any] | None = None, pipeline_cfg: dict[str, Any] | None = None,
-           fetch: Fetch = _http_fetch, download: bool = False, max_images: int | None = None) -> dict[str, int]:
+           fetch: Fetch = _http_fetch, download: bool = False, max_images: int | None = None,
+           bbox: tuple[float, float, float, float] | None = None) -> dict[str, int]:
+    """bbox (west, south, east, north) overrides the zone bbox: use a wider box to collect
+    TRAINING images from across the city without changing the demo zone."""
     zone_cfg = zone_cfg or config.zone()
     pipeline_cfg = pipeline_cfg or config.pipeline()
     mcfg, cov = pipeline_cfg["mapillary"], pipeline_cfg["coverage"]
     existing = {i.source_id for i in session.exec(select(Image).where(Image.source == "mapillary")).all()}
     stats = {"seen": 0, "new": 0, "skipped_existing": 0, "no_geometry": 0, "downloaded": 0}
     thumb_dir = ROOT / mcfg["thumb_dir"]
-    for item in iter_images(token, config.bbox_tuple(zone_cfg), mcfg, fetch=fetch, max_images=max_images):
+    for item in iter_images(token, bbox or config.bbox_tuple(zone_cfg), mcfg, fetch=fetch, max_images=max_images):
         stats["seen"] += 1
         if str(item.get("id")) in existing:
             stats["skipped_existing"] += 1
@@ -140,13 +143,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--download", action="store_true", help="also download 2048 px thumbnails")
     ap.add_argument("--max", type=int, default=None, help="stop after N images (testing)")
+    ap.add_argument("--bbox", default=None, help="west,south,east,north to collect training images beyond the zone, "
+                                                "e.g. 77.20,28.55,77.40,28.72 for east Delhi")
     args = ap.parse_args()
+    bbox = tuple(float(v) for v in args.bbox.split(",")) if args.bbox else None
+    if bbox is not None and len(bbox) != 4:
+        raise SystemExit("--bbox needs four numbers: west,south,east,north")
     logging.basicConfig(level=logging.INFO)
     token = os.environ.get("MAPILLARY_TOKEN")
     if not token:
         raise SystemExit("set MAPILLARY_TOKEN (Mapillary developer token, see docs/PROGRESS.md human tasks)")
     with Session(init_db()) as session:
-        stats = ingest(session, token, download=args.download, max_images=args.max)
+        stats = ingest(session, token, download=args.download, max_images=args.max, bbox=bbox)
     print("mapillary ingest:", stats)
 
 

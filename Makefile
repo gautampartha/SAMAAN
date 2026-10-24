@@ -13,7 +13,7 @@ help:
 	@echo "make graph-import FILE=path.geojson   load a human-corrected graph (then make seed)"
 	@echo "make graph-validate                   print the validation report"
 	@echo "make seed         synthetic barriers/coverage into $(DB) (builds the graph if missing) [synthetic=true]"
-	@echo "make ingest-mapillary   MAPILLARY_TOKEN=... download zone images (add DOWNLOAD=1 for thumbnails)"
+	@echo "make ingest-mapillary   MAPILLARY_TOKEN=... download zone images (DOWNLOAD=1 thumbnails; BBOX=w,s,e,n for a wider training area)"
 	@echo "make coverage     recompute image coverage + segment states"
 	@echo "make ml-smoke     synthetic end-to-end check of split/train/eval/domain-gap/infer (never eval/results)"
 	@echo "make train NAME=<dataset> [EPOCHS=60]     train YOLO on data/labels/<dataset>"
@@ -50,7 +50,7 @@ seed:
 	$(PY) -m pipeline.seed.synthetic
 
 ingest-mapillary:
-	$(PY) -m pipeline.ingest.mapillary $(if $(DOWNLOAD),--download,) $(if $(MAX),--max $(MAX),)
+	$(PY) -m pipeline.ingest.mapillary $(if $(DOWNLOAD),--download,) $(if $(MAX),--max $(MAX),) $(if $(BBOX),--bbox $(BBOX),)
 
 coverage:
 	$(PY) -m pipeline.coverage.run
