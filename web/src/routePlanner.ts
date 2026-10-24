@@ -1,14 +1,17 @@
-// State and actions for the route planner (origin/destination, profile, risk,
-// departure time, the /route result and the selected comparison card).
-// Lives outside the components so the map, the planner form and the
-// comparison cards share one source of truth.
+// State and actions for the trip planner (origin/destination, profile, risk,
+// departure time, the /route result with its two routes and the selected card).
+// Lives outside the components so the map, the Home sheet, the route choice and
+// the navigation engine share one source of truth.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ApiError,
+  FALLBACK_PROFILES,
   PROFILES,
   RISKS,
+  profileApi,
   routeApi,
   type Profile,
+  type ProfileInfo,
   type Risk,
   type RouteMode,
   type RouteResponse,
@@ -29,11 +32,13 @@ export interface PlannerPoint {
 export type RouteErrorKind = 'tooFar' | 'demoUnknown' | 'badParams' | 'generic';
 
 export interface PlannerState {
-  open: boolean;
   origin: PlannerPoint | null;
   destination: PlannerPoint | null;
   pickMode: PointRole | null;
   profile: Profile;
+  /** Profiles from `GET /profiles` (the fallback list until it answers). Never includes the walker baseline. */
+  profiles: ProfileInfo[];
+  profilesFromApi: boolean;
   risk: Risk;
   /** HH:MM in local time. */
   time: string;
@@ -95,11 +100,12 @@ function classifyError(err: unknown, demo: boolean): RouteErrorKind {
 }
 
 export function useRoutePlanner() {
-  const [open, setOpen] = useState(false);
   const [origin, setOrigin] = useState<PlannerPoint | null>(null);
   const [destination, setDestination] = useState<PlannerPoint | null>(null);
   const [pickMode, setPickMode] = useState<PointRole | null>(null);
   const [profile, setProfileState] = useState<Profile>(() => readStored(PROFILE_KEY, PROFILES, 'wheelchair_manual'));
+  const [profiles, setProfiles] = useState<ProfileInfo[]>([...FALLBACK_PROFILES]);
+  const [profilesFromApi, setProfilesFromApi] = useState(false);
   const [risk, setRiskState] = useState<Risk>(() => readStored(RISK_KEY, RISKS, 'balanced'));
   const [time, setTime] = useState<string>(nowHHMM);
   const [loading, setLoading] = useState(false);
@@ -114,6 +120,25 @@ export function useRoutePlanner() {
   useEffect(() => writeStored(PROFILE_KEY, profile), [profile]);
   useEffect(() => writeStored(RISK_KEY, risk), [risk]);
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // GET /profiles once; the fallback list stays when the API is down. Walker (baseline) is never selectable.
+  useEffect(() => {
+    const ac = new AbortController();
+    profileApi
+      .list(ac.signal)
+      .then((res) => {
+        if (ac.signal.aborted) return;
+        const list = res.profiles.filter((p) => p.mode !== 'baseline' && p.id !== 'walker');
+        if (list.length > 0) {
+          setProfiles(list);
+          setProfilesFromApi(true);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!ac.signal.aborted) console.warn('[profiles]', err);
+      });
+    return () => ac.abort();
+  }, []);
 
   const setProfile = useCallback((p: Profile) => setProfileState(p), []);
   const setRisk = useCallback((r: Risk) => setRiskState(r), []);
@@ -142,8 +167,8 @@ export function useRoutePlanner() {
         const res = await fetcher(ac.signal);
         if (ac.signal.aborted) return;
         setResult(res);
-        // Highlight SAMAAN's route; fall back to whichever route exists. A re-run keeps the user's pick.
-        const fallback = res.routes.samaan ? 'samaan' : res.routes.naive_accessible ? 'naive_accessible' : res.routes.shortest ? 'shortest' : null;
+        // Highlight SAMAAN's route; fall back to the standard one. A re-run keeps the user's pick.
+        const fallback: RouteMode | null = res.routes.samaan ? 'samaan' : res.routes.standard ? 'standard' : null;
         setSelected((cur) => (keepSelection && cur && res.routes[cur] ? cur : fallback));
         if (demo) {
           setOrigin({ lat: res.origin.lat, lon: res.origin.lon, label: formatCoords(res.origin.lat, res.origin.lon) });
@@ -165,11 +190,23 @@ export function useRoutePlanner() {
     [],
   );
 
+  /** Routes between the current origin and destination (no-op until both are set). */
   const compare = useCallback(() => {
     if (!origin || !destination) return;
     const params = { profile, risk, depart: departIso(time) };
     void run((signal) => routeApi.between(origin, destination, params, signal), false);
   }, [origin, destination, profile, risk, time, run]);
+
+  /** Routes between two explicit points (sets them too), e.g. "My location" resolved a moment ago. */
+  const compareBetween = useCallback(
+    (from: PlannerPoint, to: PlannerPoint) => {
+      setOrigin(from);
+      setDestination(to);
+      const params = { profile, risk, depart: departIso(time) };
+      void run((signal) => routeApi.between(from, to, params, signal), false);
+    },
+    [profile, risk, time, run],
+  );
 
   const runDemo = useCallback(() => {
     const params = { profile, risk, depart: departIso(time) };
@@ -194,11 +231,12 @@ export function useRoutePlanner() {
   }, []);
 
   const state: PlannerState = {
-    open,
     origin,
     destination,
     pickMode,
     profile,
+    profiles,
+    profilesFromApi,
     risk,
     time,
     loading,
@@ -209,7 +247,6 @@ export function useRoutePlanner() {
 
   return {
     state,
-    setOpen,
     setPoint,
     togglePick,
     setPickMode,
@@ -217,6 +254,7 @@ export function useRoutePlanner() {
     setRisk,
     setTime,
     compare,
+    compareBetween,
     runDemo,
     rerun,
     clear,

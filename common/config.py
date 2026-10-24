@@ -21,8 +21,43 @@ def load(name: str, config_dir: Path | None = None) -> dict[str, Any]:
     return data
 
 
+ACTIVE_ZONE_FILE_ENV = "SAMAAN_ACTIVE_ZONE"
+
+
+def active_zone_file() -> Path:
+    """JSON written by POST /zones/rebuild; when present it overrides config/zone.yaml so the
+    whole app (bbox, anchors, display name, OSM cache) follows the area built on demand."""
+    import os
+
+    from common.paths import PROCESSED_DIR
+
+    return Path(os.environ.get(ACTIVE_ZONE_FILE_ENV, PROCESSED_DIR / "active_zone.json"))
+
+
 def zone() -> dict[str, Any]:
-    return load("zone")
+    base = load("zone")
+    f = active_zone_file()
+    if not f.exists():
+        return base
+    import copy
+    import json
+
+    try:
+        override = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return base
+    merged = copy.deepcopy(base)
+    for key in ("name", "display_name", "bbox", "center", "anchors", "demo"):
+        if key in override:
+            merged[key] = override[key]
+    if "raw_cache" in override:
+        merged["osm"]["raw_cache"] = override["raw_cache"]
+    merged["on_demand"] = True
+    return merged
+
+
+def clear_cache() -> None:
+    load.cache_clear()
 
 
 def profiles() -> dict[str, Any]:

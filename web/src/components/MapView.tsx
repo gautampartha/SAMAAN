@@ -42,7 +42,8 @@ import {
 } from '../api';
 import type { Lang } from '../i18n';
 import type { PlannerPoint, PointRole } from '../routePlanner';
-import { ROUTE_ENDPOINT_COLOURS, ROUTE_STYLES, UNKNOWN_OVERLAY_COLOUR } from './routeStyles';
+import type { NavPosition } from '../navigation';
+import { ROUTE_ENDPOINT_COLOURS, ROUTE_STYLES, UNKNOWN_OVERLAY_COLOUR, USER_DOT_COLOUR } from './routeStyles';
 import { REACH_ANCHOR_COLOUR, REACH_FIX_COLOUR, REACH_FIX_DONE_COLOUR, REACH_STYLES } from './reachStyles';
 
 export interface BarrierSelection {
@@ -97,6 +98,13 @@ interface MapViewProps {
   /** "Photograph this" pressed in a jolt popup: open the report sheet prefilled (P9). */
   onPhotographJolt: (prefill: ReportPrefill) => void;
   wheelsFocus: WheelsFocus | null;
+  /** Navigation: the traveller's position (GPS or simulated) drawn as a blue dot. */
+  userPosition: NavPosition | null;
+  /** Keep the camera on the traveller (navigation). Panning the map calls `onUserPan`. */
+  follow: boolean;
+  onUserPan: () => void;
+  /** Fraction of the map height covered by the bottom sheet, used as padding when fitting routes. */
+  sheetFraction: number;
 }
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -138,17 +146,17 @@ const ROUTE_SOURCES = [
   'reach-simulated',
   'reach-anchor',
   'reach-fixes',
+  'user',
 ] as const;
 const STAR_IMAGE = 'samaan-anchor-star';
 const SIM_GROW_MS = 600;
 export const PENDING_REPORT_COLOUR = '#0b5fa5';
 export const MISSION_COLOUR = '#424242';
 const ROUTE_LINE_LAYERS: Record<RouteMode, string[]> = {
-  shortest: ['route-shortest'],
-  naive_accessible: ['route-naive'],
+  standard: ['route-standard-casing', 'route-standard'],
   samaan: ['route-samaan-casing', 'route-samaan'],
 };
-const ROUTE_CLICK_LAYERS = ['route-shortest', 'route-naive', 'route-samaan'];
+const ROUTE_CLICK_LAYERS = ['route-standard', 'route-samaan'];
 const RING_RADIUS = 18;
 
 // Image colours per source (also named in words in the legend).
@@ -358,10 +366,25 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     });
   }
 
-  // --- Compared routes: three styles that differ in width AND dash, not only colour ---
-  const sh = ROUTE_STYLES.shortest;
-  const na = ROUTE_STYLES.naive_accessible;
+  // --- Compared routes: two styles that differ in width AND dash, not only colour ---
+  const st = ROUTE_STYLES.standard;
   const sa = ROUTE_STYLES.samaan;
+  add({
+    id: 'route-standard-casing',
+    type: 'line',
+    source: 'routes',
+    filter: ['==', ['get', 'mode'], 'standard'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': st.width + 4 },
+  });
+  add({
+    id: 'route-standard',
+    type: 'line',
+    source: 'routes',
+    filter: ['==', ['get', 'mode'], 'standard'],
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': st.colour, 'line-width': st.width, 'line-dasharray': st.dash },
+  });
   add({
     id: 'route-samaan-casing',
     type: 'line',
@@ -377,22 +400,6 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     filter: ['==', ['get', 'mode'], 'samaan'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': sa.colour, 'line-width': sa.width },
-  });
-  add({
-    id: 'route-naive',
-    type: 'line',
-    source: 'routes',
-    filter: ['==', ['get', 'mode'], 'naive_accessible'],
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': na.colour, 'line-width': na.width, 'line-dasharray': na.dash },
-  });
-  add({
-    id: 'route-shortest',
-    type: 'line',
-    source: 'routes',
-    filter: ['==', ['get', 'mode'], 'shortest'],
-    layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { 'line-color': sh.colour, 'line-width': sh.width, 'line-dasharray': sh.dash },
   });
   // Unknown (never checked) stretches of the highlighted route: grey stripes on top of it.
   add({
@@ -418,7 +425,7 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     source: 'demo',
     filter: ['==', ['get', 'role'], 'path'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#5e35b1', 'line-width': 6, 'line-dasharray': [2, 1] },
+    paint: { 'line-color': '#7c4dff', 'line-width': 6, 'line-dasharray': [2, 1] },
   });
 
   // --- Anchors: white circle with dark ring + name label ---
@@ -558,7 +565,7 @@ function addSourcesAndLayers(map: MapLibreMap, lang: Lang): void {
     filter: ['in', ['get', 'role'], ['literal', ['origin', 'destination']]],
     paint: {
       'circle-radius': 12,
-      'circle-color': ['match', ['get', 'role'], 'origin', '#1b5e20', '#5e35b1'],
+      'circle-color': ['match', ['get', 'role'], 'origin', ROUTE_ENDPOINT_COLOURS.origin, ROUTE_ENDPOINT_COLOURS.destination],
       'circle-stroke-color': '#ffffff',
       'circle-stroke-width': 3,
     },
@@ -710,6 +717,28 @@ function addRouteTopLayers(map: MapLibreMap): void {
       paint: { 'circle-radius': 12, 'circle-color': REACH_ANCHOR_COLOUR, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 },
     });
   }
+  // --- Navigation: the traveller as a blue dot with an accuracy halo; simulated = white dot with a blue ring ---
+  add({
+    id: 'user-halo',
+    type: 'circle',
+    source: 'user',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 10, 18, 26],
+      'circle-color': USER_DOT_COLOUR,
+      'circle-opacity': 0.18,
+    },
+  });
+  add({
+    id: 'user-dot',
+    type: 'circle',
+    source: 'user',
+    paint: {
+      'circle-radius': 9,
+      'circle-color': ['case', ['get', 'simulated'], '#ffffff', USER_DOT_COLOUR],
+      'circle-stroke-color': ['case', ['get', 'simulated'], USER_DOT_COLOUR, '#ffffff'],
+      'circle-stroke-width': 3,
+    },
+  });
   if (hasGlyphs) {
     add({
       id: 'reach-anchor-label',
@@ -784,11 +813,19 @@ function boundsOfGeometry(geom: Geometry | null | undefined): [[number, number],
   return Number.isFinite(w) ? [[w, s], [e, n]] : null;
 }
 
-/** Padding that keeps the fitted feature clear of the side panel / bottom sheet. */
-function panelPadding(map: MapLibreMap, desktopLeft: number): { top: number; left: number; right: number; bottom: number } {
-  const narrow = window.matchMedia('(max-width: 767px)').matches;
+/** Padding that keeps the fitted feature clear of the bottom sheet (the map always lives in the phone column). */
+function panelPadding(map: MapLibreMap, sheetFraction: number): { top: number; left: number; right: number; bottom: number } {
   const h = map.getContainer().clientHeight;
-  return narrow ? { top: 32, left: 24, right: 24, bottom: Math.round(h * 0.6) + 16 } : { top: 40, left: desktopLeft, right: 40, bottom: 48 };
+  return { top: 72, left: 24, right: 24, bottom: Math.round(h * sheetFraction) + 16 };
+}
+
+function userToFC(pos: NavPosition | null): FeatureCollection<Point> {
+  return {
+    type: 'FeatureCollection',
+    features: pos
+      ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] }, properties: { simulated: pos.simulated } }]
+      : [],
+  };
 }
 
 function routesToFC(routes: RouteResponse | null): FeatureCollection<LineString, { mode: RouteMode }> {
@@ -1170,6 +1207,10 @@ export default function MapView({
   reachFocus,
   onPhotographJolt,
   wheelsFocus,
+  userPosition,
+  follow,
+  onUserPan,
+  sheetFraction,
 }: MapViewProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1186,6 +1227,8 @@ export default function MapView({
   const onSelectRouteRef = useRef(onSelectRoute);
   const onReportFixedRef = useRef(onReportFixed);
   const onPhotographJoltRef = useRef(onPhotographJolt);
+  const onUserPanRef = useRef(onUserPan);
+  const sheetRef = useRef(sheetFraction);
   const wheelsRef = useRef<WheelsFC | undefined>(data.wheels);
   langRef.current = lang;
   tRef.current = t;
@@ -1195,6 +1238,8 @@ export default function MapView({
   onSelectRouteRef.current = onSelectRoute;
   onReportFixedRef.current = onReportFixed;
   onPhotographJoltRef.current = onPhotographJolt;
+  onUserPanRef.current = onUserPan;
+  sheetRef.current = sheetFraction;
   wheelsRef.current = data.wheels;
 
   /** Popup actions close the popup first so focus does not end up in a removed node. */
@@ -1291,12 +1336,11 @@ export default function MapView({
       map.on('click', 'route-samaan', () => {
         if (!pickRef.current) onSelectRouteRef.current('samaan');
       });
-      map.on('click', 'route-naive', () => {
-        if (!pickRef.current) onSelectRouteRef.current('naive_accessible');
+      map.on('click', 'route-standard', () => {
+        if (!pickRef.current) onSelectRouteRef.current('standard');
       });
-      map.on('click', 'route-shortest', () => {
-        if (!pickRef.current) onSelectRouteRef.current('shortest');
-      });
+      // A drag by the user ends follow mode (navigation shows a "Re-centre" button).
+      map.on('dragstart', () => onUserPanRef.current());
 
       const first = (e: MapLayerMouseEvent): MapGeoJSONFeature | undefined => e.features?.[0];
       const coords = (f: MapGeoJSONFeature): [number, number] => {
@@ -1405,7 +1449,7 @@ export default function MapView({
     (map.getSource('routes') as GeoJSONSource | undefined)?.setData(routesToFC(routes));
     (map.getSource('route-unknown') as GeoJSONSource | undefined)?.setData(unknownToFC(routes, selectedRoute, data.footpaths));
     (map.getSource('route-barriers') as GeoJSONSource | undefined)?.setData(routeBarriersToFC(routes, selectedRoute));
-    // Dim the two routes that are not selected (opacity + the selected one stays full width).
+    // Dim the route that is not selected (opacity; the selected one stays full width).
     for (const mode of ROUTE_MODES) {
       const dim = selectedRoute !== null && selectedRoute !== mode && routes !== null;
       for (const id of ROUTE_LINE_LAYERS[mode]) {
@@ -1420,23 +1464,40 @@ export default function MapView({
     (map.getSource('route-endpoints') as GeoJSONSource | undefined)?.setData(endpointsToFC(origin, destination));
   }, [origin, destination, ready]);
 
-  // Fit the map to the selected route (or to all three when nothing is selected yet).
+  // Fit the map to the selected route (or to both when nothing is selected yet); not while following the traveller.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !routes) return;
+    if (!map || !ready || !routes || follow) return;
     const lines: LineString[] = [];
     const target = selectedRoute ? routes.routes[selectedRoute] : null;
     if (target) lines.push(target.geometry);
     else for (const mode of ROUTE_MODES) if (routes.routes[mode]) lines.push(routes.routes[mode]!.geometry);
     const b = boundsOf(lines);
     if (!b) return;
-    const narrow = window.matchMedia('(max-width: 767px)').matches;
+    map.fitBounds(b, { padding: panelPadding(map, sheetRef.current), duration: prefersReducedMotion() ? 0 : 700, maxZoom: 18 });
+  }, [routes, selectedRoute, ready, follow]);
+
+  // Navigation: draw the traveller and, in follow mode, keep the camera on them (zoomed in, sheet padding below).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    (map.getSource('user') as GeoJSONSource | undefined)?.setData(userToFC(userPosition));
+  }, [userPosition, ready]);
+  const followKey = userPosition ? `${userPosition.lat.toFixed(5)},${userPosition.lon.toFixed(5)}` : null;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !follow || !userPosition) return;
     const h = map.getContainer().clientHeight;
-    const padding = narrow
-      ? { top: 32, left: 24, right: 24, bottom: Math.round(h * 0.6) + 16 }
-      : { top: 40, left: 420, right: 40, bottom: Math.round(h * 0.46) + 24 };
-    map.fitBounds(b, { padding, duration: prefersReducedMotion() ? 0 : 700, maxZoom: 18 });
-  }, [routes, selectedRoute, ready]);
+    map.easeTo({
+      center: [userPosition.lon, userPosition.lat],
+      zoom: Math.max(map.getZoom(), 17.2),
+      padding: { top: 120, bottom: Math.round(h * sheetRef.current), left: 0, right: 0 },
+      duration: prefersReducedMotion() ? 0 : 450,
+      essential: true,
+    });
+    // Re-run only when the position moved (rounded to ~1 m) or follow toggled.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followKey, follow, ready]);
 
   // Pending reports from this session.
   useEffect(() => {
@@ -1487,8 +1548,8 @@ export default function MapView({
     if (key === reachBoundsKeyRef.current) return;
     reachBoundsKeyRef.current = key;
     const duration = prefersReducedMotion() ? 0 : 700;
-    if (b) map.fitBounds(b, { padding: panelPadding(map, 480), duration, maxZoom: 17 });
-    else map.flyTo({ center: [reach.anchor.lon, reach.anchor.lat], zoom: 16, duration, padding: panelPadding(map, 480), essential: true });
+    if (b) map.fitBounds(b, { padding: panelPadding(map, sheetRef.current), duration, maxZoom: 17 });
+    else map.flyTo({ center: [reach.anchor.lon, reach.anchor.lat], zoom: 16, duration, padding: panelPadding(map, sheetRef.current), essential: true });
   }, [reach, ready]);
 
   // Grow the simulated blob in (fill-opacity 0 -> target over ~600 ms); instant under reduced motion.
@@ -1528,7 +1589,7 @@ export default function MapView({
       center: target,
       zoom: Math.max(map.getZoom(), 17),
       duration: prefersReducedMotion() ? 0 : 900,
-      padding: panelPadding(map, 480),
+      padding: panelPadding(map, sheetRef.current),
       essential: true,
     });
     const feature = data.barriers?.features.find((f) => f.properties.id === reachFocus.barrierId);

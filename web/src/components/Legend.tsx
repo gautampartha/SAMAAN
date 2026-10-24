@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LAYER_KEYS, type LayerKey } from '../api';
 import { IMAGE_COLOURS, WHEELS_COLOURS } from './MapView';
-import { BarrierRingSwatch, ROUTE_ENDPOINT_COLOURS, RouteSwatch, UnknownOverlaySwatch } from './routeStyles';
+import { BarrierRingSwatch, ROUTE_ENDPOINT_COLOURS, RouteSwatch, UnknownOverlaySwatch, UserDotSwatch } from './routeStyles';
 import { ReachAnchorSwatch, ReachBlobSwatch, ReachFixSwatch } from './reachStyles';
 
 interface LegendProps {
@@ -116,16 +116,16 @@ export default function Legend({ visible, onToggle, onClose, headingRef }: Legen
       <h3 className="panel__subtitle">{t('legend.routeTitle')}</h3>
       <dl className="legend">
         <div className="legend__row">
-          <dt><RouteSwatch mode="shortest" /> {t('route.mode.shortest.title')}</dt>
-          <dd>{t('legend.routeShortest')}</dd>
-        </div>
-        <div className="legend__row">
-          <dt><RouteSwatch mode="naive_accessible" /> {t('route.mode.naive_accessible.title')}</dt>
-          <dd>{t('legend.routeNaive')}</dd>
+          <dt><RouteSwatch mode="standard" /> {t('route.mode.standard.title')}</dt>
+          <dd>{t('legend.routeStandard')}</dd>
         </div>
         <div className="legend__row">
           <dt><RouteSwatch mode="samaan" /> {t('route.mode.samaan.title')}</dt>
           <dd>{t('legend.routeSamaan')}</dd>
+        </div>
+        <div className="legend__row">
+          <dt><UserDotSwatch /> {t('legend.userDotTitle')}</dt>
+          <dd>{t('legend.userDot')}</dd>
         </div>
         <div className="legend__row">
           <dt><UnknownOverlaySwatch /> {t('state.unknown')}</dt>
@@ -216,15 +216,15 @@ export default function Legend({ visible, onToggle, onClose, headingRef }: Legen
           <dd>{t('legend.anchor')}</dd>
         </div>
         <div className="legend__row">
-          <dt><LineSwatch colour="#5e35b1" width={6} dash="12 6" casing /> {t('layers.demo')}</dt>
+          <dt><LineSwatch colour="#7c4dff" width={6} dash="12 6" casing /> {t('layers.demo')}</dt>
           <dd>{t('legend.demoPath')}</dd>
         </div>
         <div className="legend__row">
-          <dt><EndpointSwatch colour="#1b5e20" label="A" /> {t('demo.origin')}</dt>
+          <dt><EndpointSwatch colour="#111111" label="A" /> {t('demo.origin')}</dt>
           <dd>{t('legend.demoOrigin')}</dd>
         </div>
         <div className="legend__row">
-          <dt><EndpointSwatch colour="#5e35b1" label="B" /> {t('demo.destination')}</dt>
+          <dt><EndpointSwatch colour="#1561f1" label="B" /> {t('demo.destination')}</dt>
           <dd>{t('legend.demoDestination')}</dd>
         </div>
         <div className="legend__row">

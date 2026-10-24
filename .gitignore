@@ -32,3 +32,5 @@ data/labels/*/*.cache
 data/processed/smoke*/
 *.pt
 data/labels/smoke*/
+data/processed/active_zone.json
+data/raw/zone_*.osm

@@ -10,6 +10,8 @@ export const PROFILE_GLYPHS: Record<Profile, string> = {
   wheelchair_manual: '♿',
   elderly_walking_aid: '🧓',
   pram: '🍼',
+  cognitive: '🧩',
+  blind_low_vision: '🦯',
 };
 
 function storedProfile(): Profile {
