@@ -126,7 +126,7 @@ web:
 # Native iOS shell (Capacitor). API_URL defaults to this laptop's Wi-Fi address on port 8000.
 API_URL ?= http://$(shell ipconfig getifaddr en0 2>/dev/null || echo 127.0.0.1):8000
 ios-sync:
-	cd web && VITE_API_URL=$(API_URL) npm run build && npx cap sync ios
+	cd web && VITE_API_URL=$(API_URL) npm run build && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 npx cap sync ios
 	@echo "built web with VITE_API_URL=$(API_URL); open with: make ios"
 
 ios: ios-sync
