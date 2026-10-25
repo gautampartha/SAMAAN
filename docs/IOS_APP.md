@@ -30,7 +30,7 @@ xcrun devicectl device process launch --device <iphone udid> ai.samaan.app
 Campus and hackathon Wi-Fi usually isolate devices, so the phone cannot reach the laptop's LAN
 address. Use a tunnel (works from any network, HTTPS):
 ```bash
-cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate     # prints https://<random>.trycloudflare.com
+cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate --protocol http2   # prints https://<random>.trycloudflare.com; http2 because campus Wi-Fi drops QUIC
 make ios-sync API_URL=https://<random>.trycloudflare.com          # bake it into the app, then build + install
 ```
 The quick-tunnel address changes every time cloudflared restarts; keep it running for the whole
