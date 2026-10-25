@@ -134,3 +134,7 @@ ios: ios-sync
 
 clean-db:
 	rm -f $(DB)
+
+# Cloud VM (docs/DEPLOY.md). First time: make deploy HOST=root@<ip> SEED=1   then: make deploy HOST=root@<ip>
+deploy:
+	NVIDIA_API_KEY="$$NVIDIA_API_KEY" deploy/deploy.sh $(HOST) $(if $(SEED),--seed-data,) $(if $(DOMAIN),--domain $(DOMAIN),)

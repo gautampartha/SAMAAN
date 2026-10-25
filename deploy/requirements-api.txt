@@ -1,0 +1,19 @@
+# Server install for the SAMAAN API only (no PyTorch / Ultralytics: the API never imports them;
+# report prescreening skips itself when detector weights are absent). Versions = the tested laptop env.
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+sqlmodel==0.0.48
+sqlalchemy==2.1.6
+pydantic==2.14.1
+pyyaml==6.0.3
+requests==2.34.2
+numpy>=2,<2.4  # laptop pins <2 only for PyTorch, which the server does not install
+pandas==2.2.3
+networkx==3.6.1
+shapely==2.2.0
+geopandas==1.2.0
+pyproj==3.7.2
+pyogrio==0.13.0
+osmnx==2.1.1
+python-multipart==0.0.32
+pillow==13.0.0
