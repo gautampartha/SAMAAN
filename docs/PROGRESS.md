@@ -1111,5 +1111,13 @@ NVIDIA_API_KEY=<key> make api-lan
 - Human task 35: after importing the teammates' photos run `make infer-zero-shot && make geolocate`
   and `POST /route/reload`, then check More → Demo → Refresh (real photos, coverage %).
 
+## iOS shell moved to CocoaPods — the real cause of "voice recognition failed" (2026-10-25)
+- `@capacitor-community/speech-recognition` 7.0.1 has no `Package.swift`; `cap sync` warned
+  "not compatible with SPM" and the plugin was never compiled into the app, so every native
+  speech call threw "not implemented" → the Listen screen's "voice recognition failed".
+- Fix: regenerated `web/ios` with `npx cap add ios --packagemanager CocoaPods`, restored
+  Info.plist (usage strings, ATS, portrait), the app icon and `DEVELOPMENT_TEAM`; `pod install`
+  needs `LANG=en_US.UTF-8`. Build with `-workspace App.xcworkspace` (docs/IOS_APP.md updated).
+
 ## Phase P10 — Eval, demo, polish
 _Rescoped after the pivot; starts after the pivot work._

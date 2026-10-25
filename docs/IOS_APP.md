@@ -6,7 +6,10 @@ cannot (speech recognition through Apple's Speech framework). Capacitor generate
 the Xcode project in `web/ios/`.
 
 ## One-time setup (already done on this Mac)
-- Xcode 26 with the iOS platform, CocoaPods not required (Swift Package Manager).
+- Xcode 26 with the iOS platform and CocoaPods (`pod --version`; run pod commands with
+  `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`). The project uses CocoaPods because the speech-recognition
+  plugin ships no Swift Package manifest; with SPM it was silently left out of the app and every
+  voice input failed with "voice recognition failed".
 - An Apple Development signing identity for the team's Apple ID is installed.
 - `web/capacitor.config.ts`, `web/ios/App/App/Info.plist` (camera, microphone, speech, location,
   motion, local-network usage strings; HTTP allowed for the LAN API during the hackathon).
@@ -16,7 +19,7 @@ The project is signed with **Partha Gautam (Personal Team)**, team id `6K4J7A3A9
 `ai.samaan.app`, automatic signing. The Apple ID must be signed in under Xcode → Settings →
 Accounts on the building Mac. From the command line:
 ```bash
-cd web/ios/App && xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+cd web/ios/App && LANG=en_US.UTF-8 pod install && xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug \
   -destination 'id=<iphone udid>' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
 xcrun devicectl device install app --device <iphone udid> <path to App.app>
 xcrun devicectl device process launch --device <iphone udid> ai.samaan.app
@@ -69,7 +72,7 @@ then Run again from Xcode. No Xcode changes are needed for UI work.
   networking. For a public demo put the API behind HTTPS and rebuild.
 
 ## Simulator
-`xcodebuild -project web/ios/App/App.xcodeproj -scheme App -destination 'platform=iOS Simulator,name=iPhone 17' build`
+`xcodebuild -workspace web/ios/App/App.xcworkspace -scheme App -destination 'platform=iOS Simulator,name=iPhone 17' build`
 then run from Xcode. The simulator has no camera or compass; GPS can be simulated from Xcode's
 Debug → Location menu; the in-app "Simulate walk" also works.
 

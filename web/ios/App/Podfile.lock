@@ -1,0 +1,28 @@
+PODS:
+  - Capacitor (8.5.3):
+    - CapacitorCordova
+  - CapacitorCommunitySpeechRecognition (7.0.1):
+    - Capacitor
+  - CapacitorCordova (8.5.3)
+
+DEPENDENCIES:
+  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorCommunitySpeechRecognition (from `../../node_modules/@capacitor-community/speech-recognition`)"
+  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorCommunitySpeechRecognition:
+    :path: "../../node_modules/@capacitor-community/speech-recognition"
+  CapacitorCordova:
+    :path: "../../node_modules/@capacitor/ios"
+
+SPEC CHECKSUMS:
+  Capacitor: 2f67eaeb8ed79909cd35b5e7439a5c2a9ca58e0f
+  CapacitorCommunitySpeechRecognition: 3e03566c44c2bb3b52391a33d4518b1adbdeb38f
+  CapacitorCordova: 0b7326439c7a09fc5d20eced5e0dab986327a493
+
+PODFILE CHECKSUM: 92fcf9b9f17f0d77867a15fe89037dde9a45682c
+
+COCOAPODS: 1.17.0
