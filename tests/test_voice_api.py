@@ -12,7 +12,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.services import voice_llm
-from api.services.reports import REPORT_DIR
 from common import config
 
 
@@ -40,8 +39,6 @@ def client(api_db):
 
     with TestClient(app) as c:
         yield c
-    for r in REPORT_DIR.glob("*.jpg"):
-        r.unlink(missing_ok=True)
 
 
 class FakeModel:

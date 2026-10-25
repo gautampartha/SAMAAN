@@ -14,6 +14,7 @@ one permanent HTTPS address, so the iPhone app is built once and keeps working.
 ## 2. Deploy (from this laptop)
 ```bash
 export NVIDIA_API_KEY=<key>          # Listen's conversation model; written to /etc/samaan.env on the VM
+export SAMAAN_ADMIN_TOKEN=$(openssl rand -hex 16)   # protects the authority console; keep it, staff type it once
 make deploy HOST=root@<ip> SEED=1    # first time: copies the database, graph and photos
 ```
 The API is then live at `https://<ip with dashes>.sslip.io` (free DNS name with a real Let's
@@ -28,6 +29,10 @@ make ios-sync API_URL=https://<ip with dashes>.sslip.io
 cd web/ios/App && LANG=en_US.UTF-8 pod install && xcodebuild -workspace App.xcworkspace -scheme App ...
 ```
 then install on the phone (docs/IOS_APP.md).
+
+## Authority console
+`https://<host>/admin`: report triage, barriers, work orders, workers (docs/ADMIN.md). The deploy
+builds and uploads it; staff enter `SAMAAN_ADMIN_TOKEN` once per browser.
 
 ## What runs on the VM
 - `/opt/samaan`: the code and `data/` (SQLite database, footpath graph, photos). After the first

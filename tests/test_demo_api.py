@@ -11,9 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+import api.services.reports as reports_mod
 from api.db import get_engine
 from api.models import Barrier, Coverage, FootpathEdge, Image, Report, User, Vote
-from api.services.reports import REPORT_DIR
 from common import config
 
 TINY_JPEG = base64.b64decode(
@@ -53,8 +53,6 @@ def client(api_db):
 
     with TestClient(app) as c:
         yield c
-    for r in REPORT_DIR.glob("*.jpg"):
-        r.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="module")
@@ -108,7 +106,7 @@ def test_reset_removes_demo_activity_and_keeps_seed(client, users, api_db):
                           "width": 1, "height": 1})
     assert r.status_code == 201, r.text
     rid = r.json()["id"]
-    photo_path = REPORT_DIR / f"{r.json()['photo_url'].split('/')[2]}.jpg"
+    photo_path = reports_mod.REPORT_DIR / f"{r.json()['photo_url'].split('/')[2]}.jpg"
     assert photo_path.exists()
     for u in ("amit", "neha"):
         v = client.post(f"/reports/{rid}/votes", json={"user_id": users[u], "value": "agree"}).json()

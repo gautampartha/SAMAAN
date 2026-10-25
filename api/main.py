@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI
@@ -12,7 +13,20 @@ from sqlmodel import Session, func, select
 
 from api.db import get_session, init_db
 from api.models import Barrier, FootpathEdge, Meta
-from api.routers import demo, images, layers, missions, reach, reports, rides, route, search, zones, voice
+from api.routers import (
+    admin,
+    demo,
+    images,
+    layers,
+    missions,
+    reach,
+    reports,
+    rides,
+    route,
+    search,
+    voice,
+    zones,
+)
 from api.services.routing import build_context
 from common import config
 from pipeline.graph.osm import load_nx_from_db
@@ -52,6 +66,7 @@ app.include_router(rides.router)
 app.include_router(zones.router)
 app.include_router(demo.router)
 app.include_router(voice.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")
@@ -75,3 +90,15 @@ def zone() -> dict[str, Any]:
 @app.get("/meta")
 def meta(session: Session = Depends(get_session)) -> dict[str, str]:
     return {m.key: m.value for m in session.exec(select(Meta)).all()}
+
+# Authority console (web/dist-admin, built with `make admin-build`) served at /admin when present.
+_ADMIN_DIST = Path(__file__).resolve().parent.parent / "web" / "dist-admin"
+if _ADMIN_DIST.is_dir():
+    from fastapi.responses import RedirectResponse
+    from fastapi.staticfiles import StaticFiles
+
+    @app.get("/admin", include_in_schema=False)
+    def _admin_root() -> RedirectResponse:
+        return RedirectResponse("/admin/admin.html")
+
+    app.mount("/admin", StaticFiles(directory=_ADMIN_DIST, html=True), name="admin-ui")

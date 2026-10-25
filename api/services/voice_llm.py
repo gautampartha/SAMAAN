@@ -13,8 +13,9 @@ import logging
 import os
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from common import config
 
@@ -99,7 +100,7 @@ def _post(url: str, key: str, body: dict[str, Any], timeout: float) -> dict[str,
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                                           "Accept": "application/json", "User-Agent": "samaan-listen/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - fixed HTTPS endpoint from config
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
 
@@ -201,7 +202,7 @@ def chat(
             else:
                 try:
                     result = run_tool(name, args)
-                except Exception as e:  # noqa: BLE001 - the model gets the failure as text
+                except Exception as e:
                     log.exception("voice tool %s failed", name)
                     result = f"{name} failed: {e}"
             tool_log.append({"name": name, "args": args, "result": result})

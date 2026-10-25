@@ -1,0 +1,200 @@
+{
+  "app": {
+    "title": "Authority Console",
+    "brand": "SAMAAN",
+    "sub": "Footpath barriers, citizen reports and repair jobs",
+    "zone": "Zone"
+  },
+  "nav": {
+    "label": "Sections",
+    "overview": "Overview",
+    "reports": "Reports",
+    "barriers": "Barriers",
+    "orders": "Work orders",
+    "workers": "Workers"
+  },
+  "common": {
+    "refresh": "Refresh",
+    "updated": "Updated {{time}}",
+    "loading": "Loading…",
+    "error": "Could not reach the SAMAAN server ({{detail}}).",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "none": "None",
+    "seed": "seed",
+    "seedHint": "Synthetic demo barrier (seed data)",
+    "real": "real",
+    "severity": "Severity {{n}}/5",
+    "days": "{{n}} d",
+    "openMap": "Open in Maps",
+    "by": "by {{name}}"
+  },
+  "auth": {
+    "open": "This console is open to anyone with the link. Set SAMAAN_ADMIN_TOKEN on the server before using it publicly.",
+    "token": "Admin token",
+    "tokenSet": "Token saved",
+    "tokenPrompt": "Enter the admin token",
+    "needed": "The server requires an admin token.",
+    "signIn": "Use token",
+    "signOut": "Forget token"
+  },
+  "lang": {
+    "label": "Language",
+    "en": "English",
+    "hi": "हिन्दी"
+  },
+  "overview": {
+    "title": "Overview",
+    "kpi": {
+      "pending": "Reports to review",
+      "pendingToday": "{{n}} in the last 24 h",
+      "active": "Active barriers",
+      "activeSplit": "{{real}} real · {{seed}} seed",
+      "unassigned": "Without a work order",
+      "impassable": "{{n}} impassable",
+      "inProgress": "Jobs in progress",
+      "inProgressSplit": "{{assigned}} assigned · {{overdue}} overdue",
+      "fixedWeek": "Fixed in 7 days",
+      "medianFix": "Median time to close a job",
+      "medianNone": "no job closed yet",
+      "medianDays": "{{n}} days",
+      "workers": "Active workers",
+      "medianHours": "{{n}} h",
+      "medianSub": "job created → marked fixed"
+    },
+    "map": "Barrier map",
+    "mapLegend": {
+      "unassigned": "Needs a job",
+      "inProgress": "Job open",
+      "fixed": "Fixed"
+    },
+    "needsAction": "Needs action",
+    "needsActionHint": "Active barriers without a work order, worst first.",
+    "allClear": "Every active barrier has a work order.",
+    "assign": "Assign",
+    "reportsN": "{{n}} reports"
+  },
+  "reports": {
+    "title": "Citizen reports",
+    "filters": {
+      "pending": "To review",
+      "verified": "Verified",
+      "rejected": "Rejected",
+      "all": "All"
+    },
+    "empty": "No reports here.",
+    "photo": "Photo of report {{id}}",
+    "noPhoto": "No photo (voice or text report)",
+    "reporter": "{{name}} · trust {{trust}}",
+    "votes": "Votes: {{agree}} agree · {{disagree}} disagree · {{unsure}} unsure",
+    "prescreen": "Detector agreement {{score}}",
+    "kindFixed": "Says barrier #{{id}} is fixed",
+    "verify": "Verify",
+    "reject": "Reject",
+    "decisionNote": "Note for the record (optional)",
+    "resolved": "{{status}} {{time}}",
+    "status": {
+      "pending": "Pending",
+      "verified": "Verified",
+      "rejected": "Rejected"
+    },
+    "linked": "Barrier #{{id}}",
+    "authority": "Decided by authority"
+  },
+  "barriers": {
+    "title": "Barriers",
+    "filters": {
+      "active": "Active",
+      "fixed": "Fixed",
+      "all": "All"
+    },
+    "showSeed": "Show seed (demo) barriers",
+    "cols": {
+      "id": "#",
+      "type": "Barrier",
+      "severity": "Severity",
+      "age": "First seen",
+      "reports": "Reports",
+      "source": "Source",
+      "job": "Work order",
+      "action": "Action"
+    },
+    "empty": "No barriers here.",
+    "assign": "Assign worker",
+    "viewJob": "View job",
+    "noJob": "No job",
+    "fixedOn": "Fixed {{time}}"
+  },
+  "assign": {
+    "title": "New work order",
+    "barrier": "Barrier #{{id}} · {{name}}",
+    "worker": "Worker",
+    "noWorker": "Not yet (keep open)",
+    "noWorkers": "No workers yet. Add one in Workers.",
+    "priority": "Priority",
+    "due": "Due date",
+    "note": "Instructions for the worker",
+    "notePlaceholder": "e.g. build a ramp at the kerb, remove the bollard",
+    "by": "Assigned by",
+    "create": "Create work order",
+    "created": "Work order #{{id}} created."
+  },
+  "orders": {
+    "title": "Work orders",
+    "columns": {
+      "open": "Open",
+      "assigned": "Assigned",
+      "in_progress": "In progress"
+    },
+    "closed": "Recently closed",
+    "empty": "Nothing here.",
+    "due": "Due {{date}}",
+    "overdue": "Overdue",
+    "noWorker": "No worker",
+    "reassign": "Worker",
+    "status": {
+      "open": "Open",
+      "assigned": "Assigned",
+      "in_progress": "In progress",
+      "done": "Fixed",
+      "cant_fix": "Can't fix",
+      "cancelled": "Cancelled"
+    },
+    "action": {
+      "assigned": "Assign",
+      "in_progress": "Start work",
+      "done": "Mark fixed",
+      "cant_fix": "Can't fix",
+      "cancelled": "Cancel job"
+    },
+    "resolution": "What was done (shown in the record)",
+    "resolutionPlaceholder": "e.g. ramp built, photo taken",
+    "fixedEffect": "Marking fixed removes the barrier from every route at once.",
+    "history": "History",
+    "confirm": "Confirm"
+  },
+  "priority": {
+    "low": "Low",
+    "normal": "Normal",
+    "high": "High",
+    "urgent": "Urgent"
+  },
+  "workers": {
+    "title": "Workers",
+    "add": "Add worker",
+    "name": "Name",
+    "phone": "Phone",
+    "department": "Department",
+    "area": "Area / ward",
+    "departmentPlaceholder": "e.g. Civil works",
+    "areaPlaceholder": "e.g. Academic block",
+    "active": "Active",
+    "inactive": "Inactive",
+    "openJobs": "Open jobs",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "empty": "No workers yet.",
+    "added": "{{name}} added."
+  }
+}

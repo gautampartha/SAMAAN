@@ -23,6 +23,7 @@ from sqlmodel import Session, select
 from api.db import get_session, session_scope
 from api.geojson import collection, point_feature
 from api.models import Image
+from api.services.reports import stored_path
 from common import config
 from common.paths import ROOT
 from pipeline.coverage.compute import compute_coverage
@@ -111,7 +112,7 @@ async def upload_image(
     dest = OWN_DIR / sess / f"{img.id}{ext}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
-    img.path = str(dest.relative_to(ROOT))
+    img.path = stored_path(dest)
     db.add(img)
     db.commit()
     background.add_task(recompute_all, request)
@@ -124,8 +125,11 @@ def photo_file(image_id: int, db: Session = Depends(get_session)) -> FileRespons
     img = db.get(Image, image_id)
     if img is None or not img.path:
         raise HTTPException(404, "no photo stored for this image")
-    path = (ROOT / img.path).resolve()
-    if ROOT.resolve() not in path.parents or not path.exists():
+    path = (ROOT / img.path).resolve()  # an absolute img.path stays absolute
+    from api.services import reports as _reports
+
+    allowed = {ROOT.resolve(), Path(OWN_DIR).resolve(), Path(_reports.REPORT_DIR).resolve()}
+    if not any(a == path.parent or a in path.parents for a in allowed) or not path.exists():
         raise HTTPException(404, "photo file missing")
     return FileResponse(path)
 

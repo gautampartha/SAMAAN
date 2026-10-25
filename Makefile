@@ -137,4 +137,9 @@ clean-db:
 
 # Cloud VM (docs/DEPLOY.md). First time: make deploy HOST=root@<ip> SEED=1   then: make deploy HOST=root@<ip>
 deploy:
-	NVIDIA_API_KEY="$$NVIDIA_API_KEY" deploy/deploy.sh $(HOST) $(if $(SEED),--seed-data,) $(if $(DOMAIN),--domain $(DOMAIN),)
+	NVIDIA_API_KEY="$$NVIDIA_API_KEY" SAMAAN_ADMIN_TOKEN="$$SAMAAN_ADMIN_TOKEN" deploy/deploy.sh $(HOST) $(if $(SEED),--seed-data,) $(if $(DOMAIN),--domain $(DOMAIN),)
+
+# Authority console: dev at http://127.0.0.1:5173/admin.html (with `make web`);
+# production build served by the API at /admin
+admin-build:
+	cd web && npx vite build --config vite.admin.config.ts

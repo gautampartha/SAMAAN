@@ -298,3 +298,34 @@ class DemoRoute(SQLModel, table=True):
     path_wkt: str  # WGS84 LineString of the shortest walking path used for seeding
     length_m: float
     synthetic: bool = True
+
+
+class Worker(SQLModel, table=True):
+    """Field staff of the authority who fix barriers (admin dashboard)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    phone: str | None = None
+    department: str | None = None  # e.g. "Civil works", "Estate office", "Traffic police"
+    area: str | None = None  # ward / campus block they cover
+    active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class WorkOrder(SQLModel, table=True):
+    """One job to fix one barrier. status: open | assigned | in_progress | done | cant_fix | cancelled.
+    `done` marks the barrier fixed (routing and footpath states update at once)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    barrier_id: int = Field(index=True)
+    worker_id: int | None = Field(default=None, index=True)
+    status: str = Field(default="open", index=True)
+    priority: str = "normal"  # low | normal | high | urgent
+    due_date: str | None = None  # ISO date (YYYY-MM-DD)
+    note: str | None = None
+    resolution_note: str | None = None
+    created_by: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+    history: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))

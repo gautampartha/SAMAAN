@@ -126,8 +126,12 @@ def demo_status(session: Session = Depends(get_session)) -> dict[str, Any]:
 def _unlink_photo(rel: str | None) -> bool:
     if not rel:
         return False
+    from api.routers.images import OWN_DIR
+    from api.services.reports import REPORT_DIR
+
     p = (ROOT / rel).resolve()
-    if ROOT.resolve() not in p.parents or not p.is_file():
+    allowed = (ROOT.resolve(), Path(OWN_DIR).resolve(), Path(REPORT_DIR).resolve())
+    if not any(a in p.parents for a in allowed) or not p.is_file():
         return False
     p.unlink()
     return True

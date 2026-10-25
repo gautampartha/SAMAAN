@@ -12,7 +12,6 @@ from sqlmodel import Session, select
 
 from api.db import get_engine
 from api.models import Barrier, FootpathEdge, Mission, Report, User
-from api.services.reports import REPORT_DIR
 from ml.export_active_learning import export as export_active
 
 TINY_JPEG = base64.b64decode(
@@ -37,8 +36,6 @@ def client(api_db):
 
     with TestClient(app) as c:
         yield c
-    for r in (REPORT_DIR).glob("*.jpg"):
-        r.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="module")

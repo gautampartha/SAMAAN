@@ -57,7 +57,7 @@ def test_upload_creates_row_and_file(client, api_session):
     body = r.json()
     assert body["heading_deg"] == 12.0 and body["session_id"] == "test-walk" and body["bytes"] == len(TINY_JPEG)
     img = api_session.get(Image, body["id"])
-    assert img.source == "own" and img.synthetic is False and img.path.startswith("data/raw/own/test-walk/")
+    assert img.source == "own" and img.synthetic is False and "/test-walk/" in img.path and "data/raw" not in img.path
     photo = client.get(f"/images/{body['id']}/photo")
     assert photo.status_code == 200 and photo.content == TINY_JPEG
     meta = client.get(f"/images/{body['id']}").json()

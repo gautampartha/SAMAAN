@@ -1119,5 +1119,33 @@ NVIDIA_API_KEY=<key> make api-lan
   Info.plist (usage strings, ATS, portrait), the app icon and `DEVELOPMENT_TEAM`; `pod install`
   needs `LANG=en_US.UTF-8`. Build with `-workspace App.xcworkspace` (docs/IOS_APP.md updated).
 
+## Authority console (2026-10-25)
+- Web app for authorities (`web/admin.html`, `web/src/admin/`, docs/ADMIN.md): Overview (KPIs,
+  barrier map, needs-action list), Reports triage (verify / reject override), Barriers table,
+  Work-order board (assign, start, mark fixed, can't fix, cancel, history), Workers. English and
+  Hindi (153 keys, parity). Served by the API at `/admin` from `web/dist-admin`
+  (`make admin-build`); `make deploy` builds and uploads it.
+- Backend: `Worker`, `WorkOrder` tables; `api/routers/admin.py` (summary, reports, decision,
+  barriers, workers, work orders). "Mark fixed" sets the barrier fixed, recomputes states and
+  reloads routing. Optional `SAMAAN_ADMIN_TOKEN` (X-Admin-Token). 5 tests.
+- Metric decision: turnaround is measured job created → closed, not barrier first seen → closed
+  (first seen can be 2017 Mapillary imagery, which gave a meaningless 3361 days).
+- Verified in the browser on a scratch copy of the DB: assign → start → mark fixed removed the
+  barrier from routing; reports list, filters and the map render with no console errors.
+
+### Bug found and fixed: tests deleted real report photos
+Test teardowns (`test_reports`, `test_demo_api`, `test_voice_api`, `test_admin_api`) deleted every
+`*.jpg` in the real `data/raw/reports`, so each test run wiped citizens' report photos. The five
+report photos uploaded from the iPhone on 2026-10-25 were lost this way (database rows remain;
+the photo endpoint returns 404 for them). Fix: an autouse session fixture sends report and own
+photos to temporary folders; photo paths are stored repo-relative or absolute; the photo endpoint
+and demo reset accept the configured folders. A before/after fingerprint of `data/raw` is
+unchanged by the full suite (140 passed).
+
+### Human tasks
+35. Before exposing the API publicly (tunnel or VM), set `SAMAAN_ADMIN_TOKEN` (DEPLOY.md).
+36. Add the real field staff in Workers (names, phones, departments) before the demo.
+37. If the lost report photos matter, re-take them from the phone (the reports themselves remain).
+
 ## Phase P10 — Eval, demo, polish
 _Rescoped after the pivot; starts after the pivot work._

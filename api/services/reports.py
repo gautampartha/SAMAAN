@@ -27,6 +27,14 @@ log = logging.getLogger("samaan.reports")
 REPORT_DIR = ROOT / "data" / "raw" / "reports"
 
 
+def stored_path(p: Path) -> str:
+    """Repo-relative path when the file lives in the repo (normal case), else absolute (tests)."""
+    try:
+        return str(p.relative_to(ROOT))
+    except ValueError:
+        return str(p)
+
+
 class ReportError(Exception):
     def __init__(self, status: int, code: str, message: str = ""):
         super().__init__(message or code)
@@ -131,7 +139,7 @@ def create_report(session: Session, *, user_id: int, class_id: str, severity: in
         dest = REPORT_DIR / f"{img.id}.jpg"
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(photo)
-        img.path = str(dest.relative_to(ROOT))
+        img.path = stored_path(dest)
 
     report = Report(user_id=user_id, photo_image_id=img.id if img else None, kind=kind, target_barrier_id=target.id if target else None,
                     class_id=class_id, severity=int(severity), note=(note or None), lat=lat, lon=lon, heading_deg=heading_deg,

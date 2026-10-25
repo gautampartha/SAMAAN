@@ -29,6 +29,11 @@ rsync -az --delete \
   --exclude '__pycache__/' --exclude '*.pt' --exclude 'ml/runs/' --exclude 'samaan.egg-info/' \
   ./ "$TARGET:/opt/samaan/"
 
+echo "==> authority console (web/dist-admin)"
+( cd web && npx vite build --config vite.admin.config.ts >/dev/null )
+$SSH "mkdir -p /opt/samaan/web"
+rsync -az --delete web/dist-admin/ "$TARGET:/opt/samaan/web/dist-admin/"
+
 if [ "$SEED" = 1 ]; then
   echo "==> data snapshot (database via sqlite backup, graph, photos)"
   TMP=$(mktemp -d)
@@ -44,12 +49,14 @@ fi
 echo "==> server setup ($DOMAIN)"
 $SSH "cd /opt/samaan && $SUDO env DOMAIN='$DOMAIN' bash deploy/setup_server.sh"
 
-if [ -n "${NVIDIA_API_KEY:-}" ]; then
+if [ -n "${NVIDIA_API_KEY:-}${SAMAAN_ADMIN_TOKEN:-}" ]; then
   echo "==> secrets"
-  printf 'NVIDIA_API_KEY=%s\n' "$NVIDIA_API_KEY" | $SSH "$SUDO tee /etc/samaan.env >/dev/null && $SUDO chmod 600 /etc/samaan.env && $SUDO systemctl restart samaan-api"
-else
-  echo "(NVIDIA_API_KEY not set here: Listen will use on-device rules until it is added to /etc/samaan.env)"
+  { [ -n "${NVIDIA_API_KEY:-}" ] && printf 'NVIDIA_API_KEY=%s\n' "$NVIDIA_API_KEY"
+    [ -n "${SAMAAN_ADMIN_TOKEN:-}" ] && printf 'SAMAAN_ADMIN_TOKEN=%s\n' "$SAMAAN_ADMIN_TOKEN"; true; } \
+    | $SSH "$SUDO tee /etc/samaan.env >/dev/null && $SUDO chmod 600 /etc/samaan.env && $SUDO systemctl restart samaan-api"
 fi
+[ -n "${NVIDIA_API_KEY:-}" ] || echo "(NVIDIA_API_KEY not set here: Listen uses on-device rules until it is added to /etc/samaan.env)"
+[ -n "${SAMAAN_ADMIN_TOKEN:-}" ] || echo "WARNING: SAMAAN_ADMIN_TOKEN not set: the authority console at /admin is open to anyone with the URL"
 
 echo "==> check https://$DOMAIN/health"
 for i in 1 2 3 4 5 6; do

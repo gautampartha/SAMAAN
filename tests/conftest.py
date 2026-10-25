@@ -92,3 +92,18 @@ def db_session(toy_db) -> Session:
 
     with Session(get_engine(toy_db)) as s:
         yield s
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_photo_dirs(tmp_path_factory):
+    """Every test writes report and own photos to temporary folders, never to data/raw.
+    (Before this, test teardowns deleted *.jpg in the real data/raw/reports, wiping citizens'
+    report photos on every test run.)"""
+    import api.routers.images as images_mod
+    import api.services.reports as reports_mod
+
+    old_reports, old_own = reports_mod.REPORT_DIR, images_mod.OWN_DIR
+    reports_mod.REPORT_DIR = tmp_path_factory.mktemp("report_photos")
+    images_mod.OWN_DIR = tmp_path_factory.mktemp("own_photos")
+    yield
+    reports_mod.REPORT_DIR, images_mod.OWN_DIR = old_reports, old_own
